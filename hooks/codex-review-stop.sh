@@ -14,6 +14,11 @@ STATE_DIR="${CRB_STATE_DIR:-${TMPDIR:-/tmp}}"
 
 crb_log "Stop hook invoked for session ${SESSION_ID:-unknown}"
 
+if ! crb_is_enabled; then
+  crb_log "Stop hook skipped: CRB disabled"
+  exit 0
+fi
+
 if ! cd "$WORKDIR" 2>/dev/null; then
   crb_log "Stop hook skipped: cannot cd to $WORKDIR"
   exit 0
@@ -41,11 +46,14 @@ if ! [[ "$COUNT" =~ ^[0-9]+$ ]]; then
   COUNT="0"
 fi
 
-if (( COUNT >= 3 )); then
-  crb_log "Stop hook skipped: review loop cap reached for ${SESSION_ID:-unknown}"
+MAX_ROUNDS="${CRB_MAX_ROUNDS:-3}"
+if (( COUNT >= MAX_ROUNDS )); then
+  crb_log "Stop hook skipped: review loop cap reached ($COUNT/$MAX_ROUNDS) for ${SESSION_ID:-unknown}"
   exit 0
 fi
-printf '%s\n' "$((COUNT + 1))" >"$COUNT_FILE" 2>/dev/null || true
+ROUND="$((COUNT + 1))"
+printf '%s\n' "$ROUND" >"$COUNT_FILE" 2>/dev/null || true
+crb_log "Stop hook: starting review round $ROUND/$MAX_ROUNDS"
 
 PROMPT="$(cat <<EOF
 You are a senior code reviewer. Review this git diff for:
@@ -71,19 +79,20 @@ fi
 SEVERITY="$(printf '%s' "$REVIEW_OUTPUT" | crb_review_severity 2>/dev/null || true)"
 case "$SEVERITY" in
   LGTM)
-    crb_log "Stop hook review result: LGTM"
+    crb_log "Stop hook review result: LGTM (round $ROUND/$MAX_ROUNDS)"
+    printf '%s' "$(printf '{"systemMessage":"[CRB] Codex Review — Round %s/%s — LGTM. All clear."}' "$ROUND" "$MAX_ROUNDS")"
     exit 0
     ;;
   MINOR)
-    crb_log "Stop hook review result: MINOR"
-    printf '%s\n' "$(printf '%s' "$REVIEW_OUTPUT" | crb_format_review "Codex review found minor issues:")" >&2
+    crb_log "Stop hook review result: MINOR (round $ROUND/$MAX_ROUNDS)"
+    printf '%s\n' "$(printf '%s' "$REVIEW_OUTPUT" | crb_format_stop_feedback "MINOR" "$ROUND" "$MAX_ROUNDS")" >&2
     exit 2
     ;;
   MAJOR)
-    crb_log "Stop hook review result: MAJOR"
+    crb_log "Stop hook review result: MAJOR (round $ROUND/$MAX_ROUNDS)"
     printf '%s' "$(
       printf '%s' "$REVIEW_OUTPUT" |
-        crb_format_review "Codex review found major issues:" |
+        crb_format_stop_feedback "MAJOR" "$ROUND" "$MAX_ROUNDS" |
         crb_json_system_message
     )"
     exit 0

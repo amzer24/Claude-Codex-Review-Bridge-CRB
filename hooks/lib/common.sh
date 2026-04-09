@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
 
+CRB_TOGGLE_FILE="${CRB_TOGGLE_FILE:-$HOME/.crb-enabled}"
+CRB_MAX_ROUNDS="${CRB_MAX_ROUNDS:-3}"
+
+crb_is_enabled() {
+  if [[ -f "$CRB_TOGGLE_FILE" ]]; then
+    local val
+    val="$(cat "$CRB_TOGGLE_FILE" 2>/dev/null | tr -d '[:space:]')"
+    [[ "$val" == "1" || "$val" == "true" ]]
+  else
+    # Default: enabled (no toggle file = on)
+    return 0
+  fi
+}
+
 crb_log() {
   local message="$1"
   local log_file="${CRB_LOG_FILE:-${TMPDIR:-/tmp}/codex-review.log}"
@@ -66,6 +80,37 @@ const fs = require("fs");
 const message = fs.readFileSync(0, "utf8");
 process.stdout.write(JSON.stringify({ systemMessage: message }));
 '
+}
+
+crb_format_stop_feedback() {
+  local severity="$1"
+  local round="$2"
+  local max_rounds="$3"
+  node -e '
+const fs = require("fs");
+const severity = process.argv[1];
+const round = process.argv[2];
+const maxRounds = process.argv[3];
+const raw = fs.readFileSync(0, "utf8");
+let data;
+try { data = JSON.parse(raw); } catch { data = {}; }
+const header = `[CRB] Codex Review — Round ${round}/${maxRounds} — ${severity}`;
+const lines = [header, "─".repeat(header.length)];
+if (Array.isArray(data.issues) && data.issues.length > 0) {
+  lines.push("", "Issues:");
+  for (const issue of data.issues) lines.push(`  • ${issue}`);
+}
+if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+  lines.push("", "Suggestions:");
+  for (const suggestion of data.suggestions) lines.push(`  • ${suggestion}`);
+}
+if (severity === "MINOR") {
+  lines.push("", `[CRB] Claude is addressing these and will re-submit for review.`);
+} else if (severity === "MAJOR") {
+  lines.push("", `[CRB] Major issues found. Review paused for user attention.`);
+}
+process.stdout.write(lines.join("\n"));
+' "$severity" "$round" "$max_rounds"
 }
 
 crb_json_post_tool_context() {

@@ -92,7 +92,8 @@ test_stop_lgtm_exits_silent() {
   CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=LGTM run_hook "$STOP_HOOK" "{\"session_id\":\"stop-lgtm\",\"cwd\":\"$repo\"}"
 
   assert_eq "0" "$HOOK_STATUS" "Stop LGTM exits 0"
-  assert_empty "$HOOK_STDOUT" "Stop LGTM stdout is empty"
+  assert_contains "$HOOK_STDOUT" '"systemMessage"' "Stop LGTM stdout contains systemMessage"
+  assert_contains "$HOOK_STDOUT" "LGTM" "Stop LGTM message contains LGTM"
   assert_empty "$HOOK_STDERR" "Stop LGTM stderr is empty"
 }
 
@@ -104,7 +105,8 @@ test_stop_minor_exits_2_with_stderr() {
 
   assert_eq "2" "$HOOK_STATUS" "Stop MINOR exits 2"
   assert_empty "$HOOK_STDOUT" "Stop MINOR stdout is empty"
-  assert_contains "$HOOK_STDERR" "Codex review found minor issues" "Stop MINOR stderr contains feedback"
+  assert_contains "$HOOK_STDERR" "[CRB] Codex Review" "Stop MINOR stderr contains CRB header"
+  assert_contains "$HOOK_STDERR" "MINOR" "Stop MINOR stderr contains severity"
 }
 
 test_stop_major_system_message() {
@@ -115,7 +117,7 @@ test_stop_major_system_message() {
 
   assert_eq "0" "$HOOK_STATUS" "Stop MAJOR exits 0"
   assert_contains "$HOOK_STDOUT" '"systemMessage"' "Stop MAJOR stdout contains systemMessage"
-  assert_contains "$HOOK_STDOUT" "major issues" "Stop MAJOR message mentions major issues"
+  assert_contains "$HOOK_STDOUT" "MAJOR" "Stop MAJOR message mentions MAJOR severity"
   assert_empty "$HOOK_STDERR" "Stop MAJOR stderr is empty"
 }
 
@@ -145,7 +147,7 @@ test_stop_includes_staged_changes() {
   CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR run_hook "$STOP_HOOK" "{\"session_id\":\"stop-staged\",\"cwd\":\"$repo\"}"
 
   assert_eq "2" "$HOOK_STATUS" "Stop reviews staged changes from git diff HEAD"
-  assert_contains "$HOOK_STDERR" "minor issues" "Stop staged change gets reviewed"
+  assert_contains "$HOOK_STDERR" "[CRB]" "Stop staged change gets reviewed with CRB header"
 }
 
 test_file_untracked_is_skipped() {
@@ -230,6 +232,33 @@ test_install_force_patches_settings() {
   assert_contains "$content" 'Bash(existing)' "install.sh --force preserves existing settings"
 }
 
+test_toggle_disabled_skips_review() {
+  local repo
+  repo="$(make_repo toggle-off)"
+  printf 'console.log("changed");\n' > "$repo/app.js"
+  local toggle_file="$TMP_BASE/toggle-test"
+  printf '0\n' > "$toggle_file"
+  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MAJOR CRB_TOGGLE_FILE="$toggle_file" run_hook "$STOP_HOOK" "{\"session_id\":\"toggle-off\",\"cwd\":\"$repo\"}"
+
+  assert_eq "0" "$HOOK_STATUS" "Disabled CRB exits 0"
+  assert_empty "$HOOK_STDOUT" "Disabled CRB stdout is empty"
+  assert_empty "$HOOK_STDERR" "Disabled CRB stderr is empty"
+}
+
+test_toggle_enabled_runs_review() {
+  local repo
+  repo="$(make_repo toggle-on)"
+  printf 'console.log("changed");\n' > "$repo/app.js"
+  local toggle_file="$TMP_BASE/toggle-test-on"
+  printf '1\n' > "$toggle_file"
+  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR CRB_TOGGLE_FILE="$toggle_file" run_hook "$STOP_HOOK" "{\"session_id\":\"toggle-on\",\"cwd\":\"$repo\"}"
+
+  assert_eq "2" "$HOOK_STATUS" "Enabled CRB runs review"
+  assert_contains "$HOOK_STDERR" "[CRB]" "Enabled CRB produces feedback"
+}
+
+test_toggle_disabled_skips_review
+test_toggle_enabled_runs_review
 test_stop_lgtm_exits_silent
 test_stop_minor_exits_2_with_stderr
 test_stop_major_system_message

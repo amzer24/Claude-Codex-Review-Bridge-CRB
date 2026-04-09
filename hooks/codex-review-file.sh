@@ -14,6 +14,11 @@ RAW_FILE_PATH="$(printf '%s' "$HOOK_INPUT" | crb_json_get "tool_input.file_path"
 
 crb_log "PostToolUse hook invoked for session ${SESSION_ID:-unknown}"
 
+if ! crb_is_enabled; then
+  crb_log "PostToolUse hook skipped: CRB disabled"
+  exit 0
+fi
+
 if [[ -z "$RAW_FILE_PATH" ]]; then
   crb_log "PostToolUse hook skipped: no file path"
   exit 0
