@@ -67,14 +67,24 @@ No API keys. Both tools run on your existing subscriptions.
 
 ### Plugin (recommended)
 
-From within Claude Code:
+From within Claude Code, run each command separately:
+
+**1. Add the marketplace source:**
 ```
 /plugin marketplace add amzer24/Claude-Codex-Review-Bridge-CRB
+```
+
+**2. Install the plugin:**
+```
 /plugin install claude-codex-review-bridge@claude-codex-review-bridge
+```
+
+**3. Enable CRB:**
+```
 /crb on
 ```
 
-That's it. Three commands.
+That's it. Three commands, entered one at a time.
 
 ### Manual (per-project)
 
