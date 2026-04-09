@@ -97,7 +97,7 @@ A lightweight Node.js CLI wrapping the hook scripts with:
     ],
     "PostToolUse": [
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|MultiEdit",
         "hooks": [
           {
             "type": "command",

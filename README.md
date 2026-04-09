@@ -2,7 +2,7 @@
 
 Automated code review loop: Claude Code writes, Codex reviews, Claude fixes. Repeat until clean.
 
-Works with Claude Code CLI, Desktop app (Windows & Mac), and Web app.
+Works with Claude Code CLI and Desktop app (Windows & Mac).
 
 ## Prerequisites
 
@@ -28,26 +28,29 @@ If this fails or returns Windows Subsystem bash instead of Git Bash, ensure [Git
 
 ## Install
 
-### Option 1: Plugin (recommended)
+### Option 1: Plugin via marketplace (recommended)
 
-Clone or download this repo, then install as a plugin from within Claude Code:
+From within Claude Code (CLI or Desktop):
 ```
-/plugin install /path/to/Claude-Codes_Codex-Reviews
+/plugin marketplace add amzer24/Claude-Codex-Review-Bridge-CRB
+/plugin install claude-codex-review-bridge@claude-codex-review-bridge
 ```
 
-Or for development/testing (CLI only):
+The plugin registers hooks automatically. No manual settings edits needed.
+
+### Option 2: Plugin from local directory (development/testing)
+
+Clone the repo, then load it directly (CLI only):
 ```bash
-claude --plugin-dir /path/to/Claude-Codes_Codex-Reviews
+claude --plugin-dir /path/to/Claude-Codex-Review-Bridge-CRB
 ```
 
-The plugin registers hooks automatically via `hooks/hooks.json`. No manual settings edits needed.
-
-### Option 2: Manual (project-scoped)
+### Option 3: Manual install (project-scoped)
 
 For projects where you don't want the full plugin:
 ```bash
 cd your-project
-bash /path/to/Claude-Codes_Codex-Reviews/hooks/install.sh --force
+bash /path/to/Claude-Codex-Review-Bridge-CRB/hooks/install.sh --force
 ```
 
 This writes hooks to `your-project/.claude/settings.local.json` using absolute paths to the CRB scripts. Add `.claude/settings.local.json` to your `.gitignore`.
@@ -123,7 +126,7 @@ rm -f "${TMPDIR:-/tmp}"/codex-review-*-count
 | Claude Code CLI (macOS/Linux) | Supported |
 | Claude Code Desktop (Windows) | Supported - uses Git Bash internally |
 | Claude Code Desktop (macOS) | Supported |
-| Claude Code Web | Supported (same plugin/hook system) |
+| Claude Code Web | Not supported - requires local `codex` binary |
 
 ## License
 
