@@ -52,9 +52,14 @@ if ! crb_is_code_file "$GIT_FILE_PATH"; then
   exit 0
 fi
 
-# Always send the full file to Codex for complete context.
-# tool_input.new_string (Edit) is only a partial snippet and causes
-# false positives when Codex can't see the rest of the file.
+# Reject symlinks to prevent leaking arbitrary local files
+if [[ -L "$GIT_FILE_PATH" ]] || [[ -L "$FILE_PATH" ]]; then
+  crb_log "PostToolUse hook skipped: symlink $GIT_FILE_PATH"
+  exit 0
+fi
+
+# Read full file from disk for complete context.
+# tool_input.new_string (Edit) is only a partial snippet and causes false positives.
 if [[ -f "$GIT_FILE_PATH" ]]; then
   CHANGE_CONTENT="$(cat "$GIT_FILE_PATH")"
 elif [[ -f "$FILE_PATH" ]]; then
@@ -63,23 +68,7 @@ else
   CHANGE_CONTENT="$(printf '%s' "$HOOK_INPUT" | crb_json_get "tool_input.content")"
 fi
 
-SAFE_CONTENT="$(printf '%s' "$CHANGE_CONTENT" | crb_escape_fences)"
-
-PROMPT="$(cat <<EOF
-You are a senior code reviewer. Review this changed file for major issues only:
-- Bugs or logic errors that are likely to break behavior
-- Security vulnerabilities (injection, XSS, secrets)
-- Missing error handling at system boundaries
-- Architectural concerns that should be addressed before continuing
-
-Return structured JSON matching the output schema. Use LGTM or MINOR for issues that do not need immediate Claude feedback.
-
-File: $GIT_FILE_PATH
-\`\`\`
-$SAFE_CONTENT
-\`\`\`
-EOF
-)"
+PROMPT="$(crb_build_review_prompt "file" "$CHANGE_CONTENT" "$GIT_FILE_PATH")"
 
 if ! REVIEW_OUTPUT="$(printf '%s' "$PROMPT" | crb_run_codex_review "$SCHEMA_PATH")"; then
   crb_log "PostToolUse hook skipped: codex exec failed"

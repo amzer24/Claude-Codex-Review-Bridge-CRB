@@ -29,7 +29,7 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   exit 0
 fi
 
-DIFF_OUTPUT="$(git diff HEAD -- 2>/dev/null || true)"
+DIFF_OUTPUT="$(git --no-pager diff --no-ext-diff HEAD -- 2>/dev/null || true)"
 if [[ -z "$DIFF_OUTPUT" ]]; then
   crb_log "Stop hook skipped: no diff"
   exit 0
@@ -61,23 +61,7 @@ ROUND="$((COUNT + 1))"
 printf '%s\n' "$ROUND" >"$COUNT_FILE" 2>/dev/null || true
 crb_log "Stop hook: starting review round $ROUND/$MAX_ROUNDS"
 
-SAFE_DIFF="$(printf '%s' "$DIFF_OUTPUT" | crb_escape_fences)"
-
-PROMPT="$(cat <<EOF
-You are a senior code reviewer. Review this git diff for:
-- Bugs, logic errors, off-by-one errors
-- Security vulnerabilities (injection, XSS, secrets)
-- Missing error handling at system boundaries
-- Architectural concerns
-
-Return structured JSON matching the output schema.
-
-Git diff:
-\`\`\`diff
-$SAFE_DIFF
-\`\`\`
-EOF
-)"
+PROMPT="$(crb_build_review_prompt "diff" "$DIFF_OUTPUT")"
 
 if ! REVIEW_OUTPUT="$(printf '%s' "$PROMPT" | crb_run_codex_review "$SCHEMA_PATH")"; then
   crb_log "Stop hook skipped: codex exec failed"

@@ -177,6 +177,132 @@ crb_is_code_file() {
   esac
 }
 
+crb_detect_project_context() {
+  # Detect languages, frameworks, and architecture from the repo
+  node -e '
+const fs = require("fs");
+const path = require("path");
+
+const cwd = process.cwd();
+const context = { languages: [], frameworks: [], patterns: [] };
+
+// Detect by file extensions in git-tracked files
+try {
+  const { execSync } = require("child_process");
+  const files = execSync("git ls-files", { encoding: "utf8", timeout: 5000 }).trim().split("\n");
+  const extCounts = {};
+  for (const f of files) {
+    const ext = path.extname(f).slice(1).toLowerCase();
+    if (ext) extCounts[ext] = (extCounts[ext] || 0) + 1;
+  }
+  const extMap = {
+    ts: "TypeScript", tsx: "TypeScript/React", js: "JavaScript", jsx: "JavaScript/React",
+    py: "Python", go: "Go", rs: "Rust", rb: "Ruby", java: "Java", kt: "Kotlin",
+    cs: "C#", cpp: "C++", c: "C", swift: "Swift", php: "PHP",
+    svelte: "Svelte", vue: "Vue", sh: "Shell/Bash", sql: "SQL"
+  };
+  const sorted = Object.entries(extCounts).sort((a, b) => b[1] - a[1]);
+  for (const [ext] of sorted.slice(0, 5)) {
+    if (extMap[ext]) context.languages.push(extMap[ext]);
+  }
+} catch {}
+
+// Detect frameworks from config files
+const markers = {
+  "package.json": () => {
+    try {
+      const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+      const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+      if (deps.next) context.frameworks.push("Next.js");
+      if (deps.react) context.frameworks.push("React");
+      if (deps.express) context.frameworks.push("Express");
+      if (deps.fastify) context.frameworks.push("Fastify");
+      if (deps.ai) context.frameworks.push("Vercel AI SDK");
+      if (deps.prisma || deps["@prisma/client"]) context.frameworks.push("Prisma");
+      if (deps.tailwindcss) context.frameworks.push("Tailwind CSS");
+      if (deps.vue) context.frameworks.push("Vue");
+      if (deps.svelte) context.frameworks.push("Svelte");
+      if (deps.hono) context.frameworks.push("Hono");
+    } catch {}
+  },
+  "requirements.txt": () => {
+    try {
+      const r = fs.readFileSync("requirements.txt", "utf8");
+      if (/django/i.test(r)) context.frameworks.push("Django");
+      if (/flask/i.test(r)) context.frameworks.push("Flask");
+      if (/fastapi/i.test(r)) context.frameworks.push("FastAPI");
+      if (/torch|tensorflow|keras/i.test(r)) context.frameworks.push("ML/AI");
+    } catch {}
+  },
+  "go.mod": () => context.frameworks.push("Go modules"),
+  "Cargo.toml": () => context.frameworks.push("Cargo/Rust"),
+  "turbo.json": () => context.patterns.push("monorepo (Turborepo)"),
+  "docker-compose.yml": () => context.patterns.push("Docker"),
+  "Dockerfile": () => context.patterns.push("Docker"),
+  ".github/workflows": () => context.patterns.push("GitHub Actions CI")
+};
+
+for (const [file, detect] of Object.entries(markers)) {
+  try {
+    if (fs.existsSync(file)) detect();
+  } catch {}
+}
+
+// Detect patterns from directory structure
+try {
+  const dirs = fs.readdirSync(".").filter(d => fs.statSync(d).isDirectory());
+  if (dirs.includes("src") && dirs.includes("tests")) context.patterns.push("src/tests layout");
+  if (dirs.includes("app")) context.patterns.push("app directory routing");
+  if (dirs.includes("api")) context.patterns.push("API layer");
+  if (dirs.includes("hooks")) context.patterns.push("hooks/plugins");
+} catch {}
+
+// Build summary
+const parts = [];
+if (context.languages.length) parts.push("Languages: " + [...new Set(context.languages)].join(", "));
+if (context.frameworks.length) parts.push("Frameworks: " + [...new Set(context.frameworks)].join(", "));
+if (context.patterns.length) parts.push("Architecture: " + [...new Set(context.patterns)].join(", "));
+process.stdout.write(parts.join(". ") || "general-purpose codebase");
+'
+}
+
+crb_build_review_prompt() {
+  local review_type="$1"  # "diff" or "file"
+  local content="$2"
+  local file_path="${3:-}"
+  local project_ctx
+  project_ctx="$(crb_detect_project_context 2>/dev/null || printf 'general-purpose codebase')"
+  local safe_content
+  safe_content="$(printf '%s' "$content" | crb_escape_fences)"
+
+  local custom=""
+  if [[ -f "${CRB_PROMPT_FILE:-}" ]]; then
+    custom="$(cat "$CRB_PROMPT_FILE" 2>/dev/null || true)"
+  fi
+
+  if [[ "$review_type" == "diff" ]]; then
+    cat <<EOF
+Expert code reviewer. Stack: $project_ctx${custom:+
+$custom}
+Review this diff for bugs, security issues, missing error handling, architecture problems. No style nits. JSON output only.
+
+\`\`\`diff
+$safe_content
+\`\`\`
+EOF
+  else
+    cat <<EOF
+Expert code reviewer. Stack: $project_ctx${custom:+
+$custom}
+Review $file_path for major issues only: bugs, security, error handling, architecture. LGTM/MINOR if no immediate action needed. JSON output only.
+
+\`\`\`
+$safe_content
+\`\`\`
+EOF
+  fi
+}
+
 crb_escape_fences() {
   # Replace triple backticks with safe alternative to prevent fence breaking
   node -e '
