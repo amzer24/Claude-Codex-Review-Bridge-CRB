@@ -12,8 +12,8 @@
       "description": "Automated Codex code review for Claude Code. Codex reviews your code on every edit and task completion.",
       "version": "1.1.0",
       "source": {
-        "source": "github",
-        "repo": "amzer24/Claude-Codex-Review-Bridge-CRB"
+        "source": "url",
+        "url": "https://github.com/amzer24/Claude-Codex-Review-Bridge-CRB.git"
       }
     }
   ]
