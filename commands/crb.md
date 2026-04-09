@@ -1,44 +1,54 @@
 ---
 name: crb
-description: Toggle Codex review bridge on/off, check status, or view logs
+description: Control the Codex review bridge - toggle, model presets, logs, diagnostics
 userInvocable: true
 ---
 
-# /crb - Claude-Codex Review Bridge Control
+# /crb - Claude-Codex Review Bridge
 
-Parse the argument to determine the action:
+Parse the argument and execute the matching action. If no argument, show help.
 
-- `/crb on` - Enable Codex review
-- `/crb off` - Disable Codex review
-- `/crb status` - Show current status
-- `/crb log` - Show recent review log
-- `/crb reset` - Reset the loop counter
-- `/crb fast` - Switch to fast mode (gpt-5.4-mini, low reasoning)
-- `/crb deep` - Switch to deep mode (gpt-5.3-codex, high reasoning)
-- `/crb default` - Reset to default model (gpt-5.4, medium reasoning)
-- `/crb doctor` - Verify CRB setup is working
-
-## Instructions
-
-Based on the argument provided:
+## Actions
 
 ### `on`
-Run: `echo 1 > ~/.crb-enabled`
-Then confirm: "CRB enabled. Codex will review your code on every edit and task completion."
+```bash
+echo 1 > ~/.crb-enabled
+```
+Respond: **CRB enabled.** Codex will review your code on every edit and task completion.
 
 ### `off`
-Run: `echo 0 > ~/.crb-enabled`
-Then confirm: "CRB disabled. Codex reviews are paused."
+```bash
+echo 0 > ~/.crb-enabled
+```
+Respond: **CRB disabled.** Reviews paused.
 
 ### `status`
-Run: `cat ~/.crb-enabled 2>/dev/null || echo "not set"`
-Report:
-- If content is `1`: "CRB is **enabled**."
-- If content is `0`: "CRB is **disabled**."
-- If file missing: "CRB is **disabled** (default). Run `/crb on` to enable."
+Read actual persisted state and display as a dashboard:
+```bash
+TOGGLE="$(cat ~/.crb-enabled 2>/dev/null || echo 'not set')"
+MODEL="$(cat ~/.crb-model 2>/dev/null || echo 'gpt-5.4')"
+REASONING="$(cat ~/.crb-reasoning 2>/dev/null || echo 'medium')"
+STRICT="${CRB_STRICT_POSTTOOL:-0}"
+CRB_DIR="${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}}"
+LOG="$CRB_DIR/codex-review.log"
+LAST_ENTRY="$(tail -1 "$LOG" 2>/dev/null || echo 'no activity yet')"
+COUNTERS="$(ls "$CRB_DIR"/codex-review-*-count 2>/dev/null | wc -l | tr -d ' ')"
+```
+
+Use the **actual values** from those reads. Format as:
+```
+CRB Status
+  Review:    [enabled if TOGGLE=1, disabled if 0 or not set]
+  Model:     [actual MODEL value] ([actual REASONING value] reasoning)
+  Strict:    [on if STRICT=1, off otherwise]
+  Log:       [actual LOG path]
+  Last:      [actual LAST_ENTRY]
+  Counters:  [actual COUNTERS] active session(s)
+```
+
+Do NOT hardcode any values. Show what the files actually contain.
 
 ### `log`
-The log file location depends on install method. Check both:
 ```bash
 CRB_DIR="${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}}"
 tail -30 "$CRB_DIR/codex-review.log" 2>/dev/null || tail -30 "${TMPDIR:-/tmp}/codex-review.log" 2>/dev/null || echo "No log file found."
@@ -46,80 +56,87 @@ tail -30 "$CRB_DIR/codex-review.log" 2>/dev/null || tail -30 "${TMPDIR:-/tmp}/co
 Show the output to the user.
 
 ### `reset`
-Reset counters in both possible locations:
 ```bash
 CRB_DIR="${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}}"
 rm -f "$CRB_DIR"/codex-review-*-count "${TMPDIR:-/tmp}"/codex-review-*-count 2>/dev/null
 ```
-Then confirm: "Review loop counters reset."
+Respond: **Loop counters reset.**
 
 ### `fast`
-Run:
 ```bash
 echo "gpt-5.4-mini" > ~/.crb-model
 echo "low" > ~/.crb-reasoning
 ```
-Then confirm: "CRB set to **fast mode** (gpt-5.4-mini, low reasoning). Faster reviews, fewer tokens."
+Respond: **Fast mode** - gpt-5.4-mini, low reasoning. Quick reviews (~8s).
 
 ### `deep`
-Run:
 ```bash
 echo "gpt-5.3-codex" > ~/.crb-model
 echo "high" > ~/.crb-reasoning
 ```
-Then confirm: "CRB set to **deep mode** (gpt-5.3-codex, high reasoning). Thorough reviews, more tokens."
+Respond: **Deep mode** - gpt-5.3-codex, high reasoning. Thorough reviews (~16s).
 
 ### `default`
-Run:
 ```bash
 rm -f ~/.crb-model ~/.crb-reasoning
 ```
-Then confirm: "CRB reset to **default** (gpt-5.4, medium reasoning)."
+Respond: **Default mode** - gpt-5.4, medium reasoning.
 
 ### `doctor`
-Run each of these checks and report pass/fail for each:
+Run all checks and report as a checklist:
 
 ```bash
-# 1. Check bash
-bash --version 2>/dev/null | head -1 || echo "FAIL: bash not found"
+echo "=== CRB Doctor ==="
 
-# 2. Check node
-node --version 2>/dev/null || echo "FAIL: node not found"
+# Prerequisites
+bash --version 2>/dev/null | head -1 && echo "  bash: OK" || echo "  bash: FAIL"
+node --version 2>/dev/null && echo "  node: OK" || echo "  node: FAIL"
+git --version 2>/dev/null && echo "  git: OK" || echo "  git: FAIL"
+codex --version 2>/dev/null && echo "  codex: OK" || echo "  codex: FAIL"
 
-# 3. Check git
-git --version 2>/dev/null || echo "FAIL: git not found"
+# Config
+echo ""
+echo "=== Config ==="
+echo "  Toggle: $(cat ~/.crb-enabled 2>/dev/null || echo 'not set (disabled)')"
+echo "  Model: $(cat ~/.crb-model 2>/dev/null || echo 'default (gpt-5.4)')"
+echo "  Reasoning: $(cat ~/.crb-reasoning 2>/dev/null || echo 'default (medium)')"
 
-# 4. Check codex
-codex --version 2>/dev/null || echo "FAIL: codex not found in PATH"
-
-# 5. Check toggle
-cat ~/.crb-enabled 2>/dev/null || echo "not set (disabled by default)"
-
-# 6. Check model config
-echo "Model: $(cat ~/.crb-model 2>/dev/null || echo 'default (gpt-5.4)')"
-echo "Reasoning: $(cat ~/.crb-reasoning 2>/dev/null || echo 'default (medium)')"
-
-# 7. Dry run - create a temp git repo with a change to exercise the full hook path
+# Dry run
+echo ""
+echo "=== Dry Run ==="
 DOCTOR_TMP="$(mktemp -d)"
 (cd "$DOCTOR_TMP" && git init -q && git config user.email "crb@test" && git config user.name "CRB" && echo "x" > f.js && git add f.js && git commit -qm init && echo "y" > f.js)
-# Find the hook script: plugin install or local
-CRB_HOOK="${CLAUDE_PLUGIN_ROOT:-$(pwd)}/hooks/codex-review-stop.sh"
-echo "{\"session_id\":\"doctor\",\"cwd\":\"$DOCTOR_TMP\"}" | CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=LGTM CRB_TOGGLE_FILE=<(echo 1) bash "$CRB_HOOK" >/dev/null 2>&1 && echo "Dry run: PASS" || echo "Dry run: FAIL"
+# Find the hook script: plugin path or project path only (not cwd to avoid running unknown scripts)
+CRB_HOOK=""
+for candidate in "${CLAUDE_PLUGIN_ROOT:-}" "${CLAUDE_PROJECT_DIR:-}"; do
+  if [[ -n "$candidate" && -f "$candidate/hooks/codex-review-stop.sh" ]]; then
+    CRB_HOOK="$candidate/hooks/codex-review-stop.sh"
+    break
+  fi
+done
+if [[ -z "$CRB_HOOK" ]]; then
+  echo "  Hook dry run: SKIP (no hook found in CLAUDE_PLUGIN_ROOT or CLAUDE_PROJECT_DIR)"
+else
+  if echo "{\"session_id\":\"doctor\",\"cwd\":\"$DOCTOR_TMP\"}" | CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=LGTM CRB_TOGGLE_FILE=<(echo 1) bash "$CRB_HOOK" >/dev/null 2>&1; then
+    echo "  Hook dry run: PASS"
+  else
+    echo "  Hook dry run: FAIL"
+  fi
+fi
 rm -rf "$DOCTOR_TMP"
 ```
 
-Format the output as a clean checklist showing each component's status.
+Format as a clean checklist. Flag any FAILs with suggested fixes.
 
 ### No argument or `help`
-Show this summary:
 ```
 /crb on       Enable Codex review
 /crb off      Disable Codex review
-/crb status   Show current status
-/crb log      Show recent review log
+/crb status   Dashboard (toggle, model, log, counters)
+/crb log      Recent review activity
 /crb reset    Reset loop counter
-/crb fast     Fast mode (gpt-5.4-mini, low reasoning)
-/crb deep     Deep mode (gpt-5.3-codex, high reasoning)
-/crb default  Reset to default model
-/crb doctor   Verify setup is working
+/crb fast     Fast mode  (gpt-5.4-mini, ~8s)
+/crb deep     Deep mode  (gpt-5.3-codex, ~16s)
+/crb default  Default    (gpt-5.4, ~17s)
+/crb doctor   Verify setup
 ```
