@@ -13,6 +13,9 @@ Parse the argument to determine the action:
 - `/crb status` - Show current status
 - `/crb log` - Show recent review log
 - `/crb reset` - Reset the loop counter
+- `/crb fast` - Switch to fast mode (gpt-5.4-mini, low reasoning)
+- `/crb deep` - Switch to deep mode (gpt-5.3-codex, high reasoning)
+- `/crb default` - Reset to default model (gpt-5.4, medium reasoning)
 
 ## Instructions
 
@@ -41,12 +44,38 @@ Show the output to the user.
 Run: `rm -f "${TMPDIR:-/tmp}"/codex-review-*-count`
 Then confirm: "Review loop counters reset."
 
+### `fast`
+Run:
+```bash
+echo "gpt-5.4-mini" > ~/.crb-model
+echo "low" > ~/.crb-reasoning
+```
+Then confirm: "CRB set to **fast mode** (gpt-5.4-mini, low reasoning). Faster reviews, fewer tokens."
+
+### `deep`
+Run:
+```bash
+echo "gpt-5.3-codex" > ~/.crb-model
+echo "high" > ~/.crb-reasoning
+```
+Then confirm: "CRB set to **deep mode** (gpt-5.3-codex, high reasoning). Thorough reviews, more tokens."
+
+### `default`
+Run:
+```bash
+rm -f ~/.crb-model ~/.crb-reasoning
+```
+Then confirm: "CRB reset to **default** (gpt-5.4, medium reasoning)."
+
 ### No argument or `help`
 Show this summary:
 ```
-/crb on      Enable Codex review
-/crb off     Disable Codex review
-/crb status  Show current status
-/crb log     Show recent review log
-/crb reset   Reset loop counter
+/crb on       Enable Codex review
+/crb off      Disable Codex review
+/crb status   Show current status
+/crb log      Show recent review log
+/crb reset    Reset loop counter
+/crb fast     Fast mode (gpt-5.4-mini, low reasoning)
+/crb deep     Deep mode (gpt-5.3-codex, high reasoning)
+/crb default  Reset to default model
 ```

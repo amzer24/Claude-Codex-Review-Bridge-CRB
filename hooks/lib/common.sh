@@ -158,10 +158,32 @@ crb_run_codex_review() {
     timeout_seconds="120"
   fi
 
+  # Model selection: env vars override, then files, then defaults
+  local model="${CRB_MODEL:-}"
+  if [[ -z "$model" && -f "$HOME/.crb-model" ]]; then
+    model="$(cat "$HOME/.crb-model" 2>/dev/null | tr -d '[:space:]')"
+  fi
+  local model_args=""
+  if [[ -n "$model" ]]; then
+    model_args="-m $model"
+  fi
+
+  local reasoning="${CRB_REASONING:-}"
+  if [[ -z "$reasoning" && -f "$HOME/.crb-reasoning" ]]; then
+    reasoning="$(cat "$HOME/.crb-reasoning" 2>/dev/null | tr -d '[:space:]')"
+  fi
+  reasoning="${reasoning:-medium}"
+  local config_args=""
+  case "$reasoning" in
+    none|minimal|low|medium|high|xhigh) ;;
+    *) reasoning="medium" ;;
+  esac
+  config_args="-c model_reasoning_effort=$reasoning -c model_verbosity=low"
+
   if command -v timeout >/dev/null 2>&1; then
-    timeout "${timeout_seconds}s" codex exec --output-schema "$schema_path" -
+    timeout "${timeout_seconds}s" codex exec --output-schema "$schema_path" $model_args $config_args -
   else
-    codex exec --output-schema "$schema_path" -
+    codex exec --output-schema "$schema_path" $model_args $config_args -
   fi
 }
 

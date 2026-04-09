@@ -53,6 +53,14 @@ No API keys. Both tools run on your existing subscriptions.
 
 **No style nits** - Codex only flags real problems: bugs, security issues, missing error handling, architectural concerns. Not semicolons.
 
+**Model presets** - Switch review depth on the fly:
+
+| Command | Model | Reasoning | Speed | Use when |
+|---------|-------|-----------|-------|----------|
+| `/crb fast` | gpt-5.4-mini | low | ~8s | Rapid iteration, quick checks |
+| `/crb default` | gpt-5.4 | medium | ~17s | Normal development |
+| `/crb deep` | gpt-5.3-codex | high | ~16s | Pre-merge, security-critical code |
+
 ---
 
 ## Install
@@ -121,6 +129,8 @@ Set `CRB_PROMPT_FILE=.crb-prompt` in your environment. Codex will incorporate th
 | `CRB_MAX_ROUNDS` | `3` | Review rounds before auto-exit (1-5) |
 | `CRB_PROMPT_FILE` | - | Path to custom review instructions |
 | `CRB_CODEX_TIMEOUT_SECONDS` | `120` | Codex call timeout (1-120s) |
+| `CRB_MODEL` | `gpt-5.4` | Codex model (`gpt-5.4-mini`, `gpt-5.3-codex`, etc.) |
+| `CRB_REASONING` | `medium` | Reasoning effort (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`) |
 | `CRB_DRY_RUN` | `0` | `1` to test without calling Codex |
 | `CRB_LOG_FILE` | `$TMPDIR/codex-review.log` | Log location |
 
