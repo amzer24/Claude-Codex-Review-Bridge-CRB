@@ -19,7 +19,7 @@ Use Claude Code's built-in hooks system to trigger Codex review at two lifecycle
 ```
 Claude Code working
     │
-    ├── [PostToolUse: Write/Edit] ──→ Codex reviews changed file
+    ├── [PostToolUse: Write/Edit/MultiEdit] ──→ Codex reviews changed file
     │   ├── Minor issues → ignored (only MAJOR surfaced per-file)
     │   └── Major issues → exit 0 + hookSpecificOutput.additionalContext (Claude sees feedback)
     │
@@ -158,7 +158,7 @@ You are a senior code reviewer. Review this git diff for:
 Return structured JSON matching the output schema.
 ```
 
-#### `codex-review-file.sh` (per-file review on Write/Edit)
+#### `codex-review-file.sh` (per-file review on Write/Edit/MultiEdit)
 
 **Input:** Receives JSON with `tool_input.file_path` and `tool_input.content` or `tool_input.new_string`
 **Logic:**
@@ -179,7 +179,7 @@ Return structured JSON matching the output schema.
 | MINOR | Claude continues with feedback | 2 | **stderr** (Claude sees this as context) |
 | MAJOR | Claude stops, user sees review | 0 | **stdout** JSON: `{"systemMessage": "..."}` |
 
-**PostToolUse hook (Write/Edit):**
+**PostToolUse hook (Write/Edit/MultiEdit):**
 
 | Severity | Action | Exit Code | Output Channel |
 |----------|--------|-----------|----------------|
@@ -344,7 +344,7 @@ CLI_test/
 ## Open Questions
 
 1. **Codex subscription + `codex exec`:** Some reports suggest `codex exec` may prefer API keys over subscription auth for automation. Need to verify this works reliably with ChatGPT Pro subscription.
-2. **PostToolUse frequency:** Reviewing every Write/Edit may be too noisy. Should we batch and only review on Stop? Or only review files matching certain patterns?
+2. **PostToolUse frequency:** Reviewing every Write/Edit/MultiEdit may be too noisy. Should we batch and only review on Stop? Or only review files matching certain patterns?
 3. **Transcript access:** The Stop hook receives `transcript_path` — should we send conversation context to Codex alongside the diff for better review quality?
 4. **Windows compatibility:** Codex CLI docs recommend WSL for Windows. Phase 1 targets WSL/Git Bash only — verify `codex exec` piping works in both environments.
 

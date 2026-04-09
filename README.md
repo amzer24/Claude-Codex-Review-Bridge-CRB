@@ -6,7 +6,7 @@ Works with Claude Code CLI and Desktop app (Windows & Mac).
 
 ## Prerequisites
 
-- **Claude Code** (CLI, Desktop, or Web) with an active subscription
+- **Claude Code** (CLI or Desktop app) with an active subscription
 - **[Codex CLI](https://developers.openai.com/codex/cli)** authenticated with your ChatGPT subscription (`codex` in PATH)
 - **Node.js** 18+
 - **Git** (with Git Bash on Windows)
@@ -57,14 +57,21 @@ This writes hooks to `your-project/.claude/settings.local.json` using absolute p
 
 ## Enable
 
-CRB is **disabled by default** to protect privacy. Opt in explicitly:
-```bash
-echo 1 > ~/.crb-enabled
+CRB is **disabled by default** to protect privacy.
+
+**With the plugin installed (recommended):**
+```
+/crb on       Enable Codex review
+/crb off      Disable Codex review
+/crb status   Show current status
+/crb log      Show recent review log
+/crb reset    Reset loop counter
 ```
 
-Disable:
+**Shell fallback:**
 ```bash
-echo 0 > ~/.crb-enabled
+echo 1 > ~/.crb-enabled    # enable
+echo 0 > ~/.crb-enabled    # disable
 ```
 
 ## How It Works
@@ -108,15 +115,17 @@ Then set `CRB_PROMPT_FILE=.crb-prompt` in your environment.
 
 ## View Logs
 
-```bash
-tail -20 "${TMPDIR:-/tmp}/codex-review.log"
 ```
+/crb log
+```
+Or: `tail -20 "${TMPDIR:-/tmp}/codex-review.log"`
 
 ## Reset Loop Counter
 
-```bash
-rm -f "${TMPDIR:-/tmp}"/codex-review-*-count
 ```
+/crb reset
+```
+Or: `rm -f "${TMPDIR:-/tmp}"/codex-review-*-count`
 
 ## Compatibility
 

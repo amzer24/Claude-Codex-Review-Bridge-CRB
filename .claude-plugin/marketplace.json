@@ -1,4 +1,8 @@
 {
+  "name": "claude-codex-review-bridge",
+  "owner": {
+    "name": "Lee Leckenby"
+  },
   "plugins": [
     {
       "name": "claude-codex-review-bridge",
