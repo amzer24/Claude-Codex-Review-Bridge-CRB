@@ -92,8 +92,7 @@ test_stop_lgtm_exits_silent() {
   CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=LGTM run_hook "$STOP_HOOK" "{\"session_id\":\"stop-lgtm\",\"cwd\":\"$repo\"}"
 
   assert_eq "0" "$HOOK_STATUS" "Stop LGTM exits 0"
-  assert_contains "$HOOK_STDOUT" '"systemMessage"' "Stop LGTM stdout contains systemMessage"
-  assert_contains "$HOOK_STDOUT" "LGTM" "Stop LGTM message contains LGTM"
+  assert_empty "$HOOK_STDOUT" "Stop LGTM stdout is empty"
   assert_empty "$HOOK_STDERR" "Stop LGTM stderr is empty"
 }
 
@@ -257,6 +256,22 @@ test_toggle_enabled_runs_review() {
   assert_contains "$HOOK_STDERR" "[CRB]" "Enabled CRB produces feedback"
 }
 
+test_max_rounds_clamped_to_5() {
+  local repo
+  repo="$(make_repo max-rounds-clamp)"
+  printf 'console.log("changed");\n' > "$repo/app.js"
+  local state_dir="$TMP_BASE/state-clamp"
+  mkdir -p "$state_dir"
+  # Pre-set counter to 5 (simulating 5 rounds already done)
+  printf '5\n' > "$state_dir/codex-review-max-rounds-clamp-count"
+  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR CRB_STATE_DIR="$state_dir" CRB_MAX_ROUNDS=999 run_hook "$STOP_HOOK" "{\"session_id\":\"max-rounds-clamp\",\"cwd\":\"$repo\"}"
+
+  assert_eq "0" "$HOOK_STATUS" "MAX_ROUNDS=999 clamped to 5, exits 0 after 5 rounds"
+  assert_empty "$HOOK_STDOUT" "Clamped max-rounds stdout is empty"
+  assert_empty "$HOOK_STDERR" "Clamped max-rounds stderr is empty"
+}
+
+test_max_rounds_clamped_to_5
 test_toggle_disabled_skips_review
 test_toggle_enabled_runs_review
 test_stop_lgtm_exits_silent

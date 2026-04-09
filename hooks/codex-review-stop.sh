@@ -47,6 +47,12 @@ if ! [[ "$COUNT" =~ ^[0-9]+$ ]]; then
 fi
 
 MAX_ROUNDS="${CRB_MAX_ROUNDS:-3}"
+if ! [[ "$MAX_ROUNDS" =~ ^[0-9]+$ ]] || (( MAX_ROUNDS < 1 )); then
+  MAX_ROUNDS=3
+fi
+if (( MAX_ROUNDS > 5 )); then
+  MAX_ROUNDS=5
+fi
 if (( COUNT >= MAX_ROUNDS )); then
   crb_log "Stop hook skipped: review loop cap reached ($COUNT/$MAX_ROUNDS) for ${SESSION_ID:-unknown}"
   exit 0
@@ -80,7 +86,6 @@ SEVERITY="$(printf '%s' "$REVIEW_OUTPUT" | crb_review_severity 2>/dev/null || tr
 case "$SEVERITY" in
   LGTM)
     crb_log "Stop hook review result: LGTM (round $ROUND/$MAX_ROUNDS)"
-    printf '%s' "$(printf '{"systemMessage":"[CRB] Codex Review — Round %s/%s — LGTM. All clear."}' "$ROUND" "$MAX_ROUNDS")"
     exit 0
     ;;
   MINOR)

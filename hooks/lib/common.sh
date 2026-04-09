@@ -27,7 +27,8 @@ crb_json_get() {
 const fs = require("fs");
 const path = process.argv[1].split(".");
 const input = fs.readFileSync(0, "utf8");
-const data = input.trim() ? JSON.parse(input) : {};
+let data;
+try { data = input.trim() ? JSON.parse(input) : {}; } catch { data = {}; }
 let value = data;
 for (const key of path) {
   if (value == null || !Object.prototype.hasOwnProperty.call(value, key)) {
@@ -94,20 +95,20 @@ const maxRounds = process.argv[3];
 const raw = fs.readFileSync(0, "utf8");
 let data;
 try { data = JSON.parse(raw); } catch { data = {}; }
-const header = `[CRB] Codex Review — Round ${round}/${maxRounds} — ${severity}`;
-const lines = [header, "─".repeat(header.length)];
+const header = `[CRB] Codex Review - Round ${round}/${maxRounds} - ${severity}`;
+const lines = [header, "-".repeat(header.length)];
 if (Array.isArray(data.issues) && data.issues.length > 0) {
   lines.push("", "Issues:");
-  for (const issue of data.issues) lines.push(`  • ${issue}`);
+  for (const issue of data.issues) lines.push(`  * ${issue}`);
 }
 if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
   lines.push("", "Suggestions:");
-  for (const suggestion of data.suggestions) lines.push(`  • ${suggestion}`);
+  for (const suggestion of data.suggestions) lines.push(`  * ${suggestion}`);
 }
 if (severity === "MINOR") {
-  lines.push("", `[CRB] Claude is addressing these and will re-submit for review.`);
+  lines.push("", "[CRB] Claude is addressing these and will re-submit for review.");
 } else if (severity === "MAJOR") {
-  lines.push("", `[CRB] Major issues found. Review paused for user attention.`);
+  lines.push("", "[CRB] Major issues found. Review paused for user attention.");
 }
 process.stdout.write(lines.join("\n"));
 ' "$severity" "$round" "$max_rounds"
