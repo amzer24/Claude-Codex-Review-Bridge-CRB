@@ -2,8 +2,9 @@
 set -u -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-SETTINGS_PATH="${CRB_SETTINGS_PATH:-$PROJECT_DIR/.claude/settings.local.json}"
+CRB_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+TARGET_DIR="${CRB_TARGET_DIR:-$(pwd)}"
+SETTINGS_PATH="${CRB_SETTINGS_PATH:-$TARGET_DIR/.claude/settings.local.json}"
 FORCE=0
 
 for arg in "$@"; do
@@ -13,18 +14,17 @@ for arg in "$@"; do
       ;;
     --help|-h)
       cat <<EOF
-Usage: hooks/install.sh [--force]
+Usage: cd your-project && /path/to/hooks/install.sh [--force]
 
-Adds Claude Code Stop and PostToolUse hooks for Claude-Codex Review Bridge.
+Adds Claude Code hooks for Claude-Codex Review Bridge to the current
+project. Hook commands use absolute paths to the CRB scripts, so hooks
+work regardless of which project is active.
 
-By default this script prints what it would do and exits without modifying
-settings. Pass --force to patch the settings file.
-
-Installs hooks to project-scoped settings (.claude/settings.local.json)
-so they only apply to this project, not globally.
+Installs to: \$PWD/.claude/settings.local.json (project-scoped, gitignored)
 
 Environment:
-  CRB_SETTINGS_PATH  Override Claude settings path.
+  CRB_TARGET_DIR      Override target project directory (default: \$PWD).
+  CRB_SETTINGS_PATH   Override Claude settings path.
 EOF
       exit 0
       ;;
@@ -35,14 +35,17 @@ EOF
   esac
 done
 
-STOP_COMMAND='bash "$CLAUDE_PROJECT_DIR/hooks/codex-review-stop.sh"'
-FILE_COMMAND='bash "$CLAUDE_PROJECT_DIR/hooks/codex-review-file.sh"'
+# Shell-escape the CRB_ROOT path for safe embedding in hook commands
+ESCAPED_ROOT="$(printf '%s' "$CRB_ROOT" | sed "s/'/'\\\\''/g")"
+STOP_COMMAND="bash '$ESCAPED_ROOT/hooks/codex-review-stop.sh'"
+FILE_COMMAND="bash '$ESCAPED_ROOT/hooks/codex-review-file.sh'"
 
 cat <<EOF
 Claude-Codex Review Bridge hook installer
 
-Project:  $PROJECT_DIR
-Settings: $SETTINGS_PATH
+CRB source: $CRB_ROOT
+Target:     $TARGET_DIR
+Settings:   $SETTINGS_PATH
 
 Will ensure:
 - Stop hook:        $STOP_COMMAND
@@ -52,7 +55,7 @@ EOF
 if [[ "$FORCE" -ne 1 ]]; then
   cat <<EOF
 
-No changes made. Re-run with --force after reviewing the target settings path.
+No changes made. Re-run with --force after reviewing the above paths.
 EOF
   exit 1
 fi
@@ -71,10 +74,11 @@ if ! cp "$SETTINGS_PATH" "$BACKUP_PATH"; then
   exit 1
 fi
 
-SETTINGS_PATH="$SETTINGS_PATH" node <<'NODE'
+CRB_ROOT="$CRB_ROOT" SETTINGS_PATH="$SETTINGS_PATH" node <<'NODE'
 const fs = require("fs");
 
 const settingsPath = process.env.SETTINGS_PATH;
+const crbRoot = process.env.CRB_ROOT;
 const raw = fs.readFileSync(settingsPath, "utf8").trim();
 const settings = raw ? JSON.parse(raw) : {};
 
@@ -82,8 +86,10 @@ settings.hooks ??= {};
 settings.hooks.Stop ??= [];
 settings.hooks.PostToolUse ??= [];
 
-const stopCommand = 'bash "$CLAUDE_PROJECT_DIR/hooks/codex-review-stop.sh"';
-const fileCommand = 'bash "$CLAUDE_PROJECT_DIR/hooks/codex-review-file.sh"';
+// Single-quote the path to prevent shell metacharacter expansion
+const escaped = crbRoot.replace(/'/g, "'\\''");
+const stopCommand = `bash '${escaped}/hooks/codex-review-stop.sh'`;
+const fileCommand = `bash '${escaped}/hooks/codex-review-file.sh'`;
 
 function entryHasCommand(entry, command) {
   return Array.isArray(entry?.hooks) && entry.hooks.some((hook) => hook.command === command);
@@ -101,9 +107,9 @@ if (!settings.hooks.Stop.some((entry) => entryHasCommand(entry, stopCommand))) {
   });
 }
 
-if (!settings.hooks.PostToolUse.some((entry) => entry.matcher === "Write|Edit" && entryHasCommand(entry, fileCommand))) {
+if (!settings.hooks.PostToolUse.some((entry) => entry.matcher === "Write|Edit|MultiEdit" && entryHasCommand(entry, fileCommand))) {
   settings.hooks.PostToolUse.push({
-    matcher: "Write|Edit",
+    matcher: "Write|Edit|MultiEdit",
     hooks: [
       {
         type: "command",

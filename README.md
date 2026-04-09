@@ -2,29 +2,59 @@
 
 Automated code review loop: Claude Code writes, Codex reviews, Claude fixes. Repeat until clean.
 
+Works with Claude Code CLI, Desktop app (Windows & Mac), and Web app.
+
 ## Prerequisites
 
-- [Claude Code](https://claude.ai/claude-code) with an active subscription
-- [Codex CLI](https://developers.openai.com/codex/cli) authenticated with your ChatGPT subscription (`codex` in PATH)
-- Node.js 18+
-- Git
+- **Claude Code** (CLI, Desktop, or Web) with an active subscription
+- **[Codex CLI](https://developers.openai.com/codex/cli)** authenticated with your ChatGPT subscription (`codex` in PATH)
+- **Node.js** 18+
+- **Git** (with Git Bash on Windows)
+
+### Windows-specific
+
+Claude Code uses **Git Bash internally** to run hook scripts. Verify it works:
+```bash
+bash --version
+```
+If this fails or returns Windows Subsystem bash instead of Git Bash, ensure [Git for Windows](https://git-scm.com/downloads/win) is installed and its `bin/` directory is on your PATH. You can also set the path explicitly in Claude Code settings:
+```json
+{
+  "env": {
+    "CLAUDE_CODE_GIT_BASH_PATH": "C:\\Program Files\\Git\\bin\\bash.exe"
+  }
+}
+```
 
 ## Install
 
-**As a Claude Code plugin (recommended):**
-```bash
-claude --plugin-dir /path/to/claude-codex-review-bridge
+### Option 1: Plugin (recommended)
+
+Clone or download this repo, then install as a plugin from within Claude Code:
+```
+/plugin install /path/to/Claude-Codes_Codex-Reviews
 ```
 
-**Manual (project-scoped):**
+Or for development/testing (CLI only):
+```bash
+claude --plugin-dir /path/to/Claude-Codes_Codex-Reviews
+```
+
+The plugin registers hooks automatically via `hooks/hooks.json`. No manual settings edits needed.
+
+### Option 2: Manual (project-scoped)
+
+For projects where you don't want the full plugin:
 ```bash
 cd your-project
-bash /path/to/claude-codex-review-bridge/hooks/install.sh --force
+bash /path/to/Claude-Codes_Codex-Reviews/hooks/install.sh --force
 ```
+
+This writes hooks to `your-project/.claude/settings.local.json` using absolute paths to the CRB scripts. Add `.claude/settings.local.json` to your `.gitignore`.
 
 ## Enable
 
-CRB is **disabled by default**. Opt in explicitly:
+CRB is **disabled by default** to protect privacy. Opt in explicitly:
 ```bash
 echo 1 > ~/.crb-enabled
 ```
@@ -39,7 +69,7 @@ echo 0 > ~/.crb-enabled
 ```
 Claude edits code
     |
-    +-- PostToolUse hook fires (Write/Edit on tracked code files)
+    +-- PostToolUse hook fires (Write/Edit/MultiEdit on tracked code files)
     |   Codex reviews the full file. MAJOR issues feed back to Claude.
     |
     +-- Stop hook fires (Claude finishes a task)
@@ -53,7 +83,7 @@ The review prompt automatically detects your project's languages, frameworks, an
 
 ## Custom Review Instructions
 
-Create a `.crb-prompt` file in your project root with additional review instructions:
+Create a file with project-specific review instructions:
 ```
 Focus on SQL injection in all database queries.
 Ensure all API endpoints validate authentication.
@@ -84,6 +114,16 @@ tail -20 "${TMPDIR:-/tmp}/codex-review.log"
 ```bash
 rm -f "${TMPDIR:-/tmp}"/codex-review-*-count
 ```
+
+## Compatibility
+
+| Platform | Status |
+|----------|--------|
+| Claude Code CLI (Windows) | Tested - requires Git Bash |
+| Claude Code CLI (macOS/Linux) | Supported |
+| Claude Code Desktop (Windows) | Supported - uses Git Bash internally |
+| Claude Code Desktop (macOS) | Supported |
+| Claude Code Web | Supported (same plugin/hook system) |
 
 ## License
 
