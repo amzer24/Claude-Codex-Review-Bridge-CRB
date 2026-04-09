@@ -84,7 +84,12 @@ From within Claude Code, run each command separately:
 /crb on
 ```
 
-That's it. Three commands, entered one at a time.
+**4. Verify setup:**
+```
+/crb doctor
+```
+
+That's it. Run the commands one at a time.
 
 ### Manual (per-project)
 
@@ -115,6 +120,10 @@ CRB is **disabled by default**. You control it:
 | `/crb status` | Check if CRB is active |
 | `/crb log` | View recent review activity |
 | `/crb reset` | Reset the review loop counter |
+| `/crb doctor` | Verify bash, node, git, codex, config, and hook dry run |
+| `/crb fast` | Use faster lower-reasoning reviews |
+| `/crb default` | Restore the default review model |
+| `/crb deep` | Use deeper pre-merge reviews |
 
 ---
 
@@ -215,11 +224,11 @@ skills/
   crb/
     SKILL.md                 Review loop behavior instructions for Claude
 tests/
-  run-tests.sh               46-assertion test suite
+  run-tests.sh               Hook, plugin, installer, and doc regression tests
 ```
 
 ---
 
 <p align="center">
-  MIT License
+  <a href="LICENSE">MIT License</a>
 </p>

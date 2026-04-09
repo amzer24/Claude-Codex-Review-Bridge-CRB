@@ -45,8 +45,8 @@ Claude Code working
 Wrap the working hook scripts into a distributable Claude Code plugin so anyone can install with one command:
 
 ```
-/plugin marketplace add <owner>/claude-codex-review-bridge
-/plugin install claude-codex-review-bridge
+/plugin marketplace add amzer24/Claude-Codex-Review-Bridge-CRB
+/plugin install claude-codex-review-bridge@claude-codex-review-bridge
 ```
 
 **Plugin structure:**
@@ -190,7 +190,7 @@ Return structured JSON matching the output schema.
 
 - Max 3 review rounds per session (tracked via temp file keyed by `session_id`)
 - After 3 rounds, always exit 0 regardless of Codex feedback
-- Counter file: `/tmp/codex-review-{session_id}-count`
+- Counter file: `$CLAUDE_PLUGIN_DATA/codex-review-{session_id}-count` when installed as a plugin, falling back to `${TMPDIR:-/tmp}` for manual installs
 
 ---
 
@@ -280,7 +280,7 @@ CLI_test/
 ### Phase 1
 - **Manual:** Run Claude Code with hooks installed, verify Codex gets invoked and feedback loops back
 - **Dry run mode:** Environment variable `CRB_DRY_RUN=1` skips actual `codex exec` call and returns mock review output
-- **Logging:** All hook invocations logged to `/tmp/codex-review.log` with timestamps
+- **Logging:** All hook invocations logged to `$CLAUDE_PLUGIN_DATA/codex-review.log` when installed as a plugin, falling back to `${TMPDIR:-/tmp}/codex-review.log`
 
 ### Phase 2
 - Unit tests for severity parser and JSON formatting
@@ -316,22 +316,22 @@ CLI_test/
 ## Acceptance Criteria
 
 ### Phase 1 (MVP)
-- [ ] `codex-review-stop.sh` captures git diff and sends to Codex for review
-- [ ] Codex review output is parsed for LGTM/MINOR/MAJOR severity
-- [ ] MINOR feedback auto-loops back to Claude Code via **stderr + exit 2**
-- [ ] MAJOR feedback surfaces to user via **stdout JSON `systemMessage`** + exit 0
-- [ ] LGTM lets Claude stop normally
-- [ ] Loop counter prevents more than 3 review rounds
-- [ ] Dry run mode works without Codex installed
-- [ ] `install.sh` correctly patches Claude Code settings.json
-- [ ] Works on Windows (Git Bash) and macOS/Linux
+- [x] `codex-review-stop.sh` captures git diff and sends to Codex for review
+- [x] Codex review output is parsed for LGTM/MINOR/MAJOR severity
+- [x] MINOR feedback auto-loops back to Claude Code via **stderr + exit 2**
+- [x] MAJOR feedback surfaces to user via **stdout JSON `systemMessage`** + exit 0
+- [x] LGTM lets Claude stop normally
+- [x] Loop counter prevents more than 3 review rounds
+- [x] Dry run mode works without Codex installed
+- [x] `install.sh` correctly patches Claude Code settings.json
+- [x] Works on Windows (Git Bash) and macOS/Linux
 
 ### Phase 1.5 (Plugin Packaging)
-- [ ] `plugin.json` manifest with name, version, description
-- [ ] `hooks/hooks.json` replaces manual `settings.json` patching
-- [ ] Optional `skills/crb/SKILL.md` for manual review commands
-- [ ] `README.md` with install prerequisites and usage
-- [ ] Installable via `/plugin marketplace add` or manual clone to `~/.claude/plugins/`
+- [x] `plugin.json` manifest with name, version, description
+- [x] `hooks/hooks.json` replaces manual `settings.json` patching
+- [x] Optional `skills/crb/SKILL.md` for manual review commands
+- [x] `README.md` with install prerequisites and usage
+- [x] Installable via `/plugin marketplace add` and `/plugin install`
 
 ### Phase 2 (Future)
 - [ ] `crb plan` sends plan through Codex review before implementation
@@ -343,10 +343,10 @@ CLI_test/
 
 ## Open Questions
 
-1. **Codex subscription + `codex exec`:** Some reports suggest `codex exec` may prefer API keys over subscription auth for automation. Need to verify this works reliably with ChatGPT Pro subscription.
+1. **Codex subscription + `codex exec`:** Verified live with ChatGPT subscription OAuth on this Windows/Git Bash setup. Keep this on the watchlist because Codex CLI auth behavior can change.
 2. **PostToolUse frequency:** Reviewing every Write/Edit/MultiEdit may be too noisy. Should we batch and only review on Stop? Or only review files matching certain patterns?
 3. **Transcript access:** The Stop hook receives `transcript_path` — should we send conversation context to Codex alongside the diff for better review quality?
-4. **Windows compatibility:** Codex CLI docs recommend WSL for Windows. Phase 1 targets WSL/Git Bash only — verify `codex exec` piping works in both environments.
+4. **Windows compatibility:** Verified on Windows with Git Bash. Codex CLI docs recommend WSL for Windows; WSL should remain supported but needs separate end-user testing.
 
 ---
 

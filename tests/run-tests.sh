@@ -225,6 +225,17 @@ test_skill_doc_has_no_mojibake() {
   assert_eq "no" "$mojibake" "Skill doc has no mojibake"
 }
 
+test_public_docs_have_no_mojibake() {
+  local mojibake
+  mojibake="$(node -e '
+const fs = require("fs");
+const files = ["README.md", "SPEC.md", "commands/crb.md", "skills/crb/SKILL.md", ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"];
+const bad = files.filter((file) => fs.readFileSync(file, "utf8").includes("\u00e2"));
+process.stdout.write(bad.join("\n"));
+' 2>/dev/null || true)"
+  assert_empty "$mojibake" "Public docs have no mojibake"
+}
+
 test_install_requires_force() {
   local settings="$TMP_BASE/settings.json"
   printf '{}\n' > "$settings"
@@ -309,6 +320,7 @@ test_schema_path_exists
 test_marketplace_source_points_at_plugin_root
 test_plugin_manifest_does_not_duplicate_standard_hooks
 test_skill_doc_has_no_mojibake
+test_public_docs_have_no_mojibake
 test_install_requires_force
 test_install_force_patches_settings
 
