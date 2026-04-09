@@ -4,11 +4,11 @@ set -u -o pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STOP_HOOK="$ROOT/hooks/codex-review-stop.sh"
 FILE_HOOK="$ROOT/hooks/codex-review-file.sh"
+DOCTOR_HOOK="$ROOT/hooks/crb-doctor.sh"
 INSTALL_SCRIPT="$ROOT/hooks/install.sh"
-TMP_BASE="${TMPDIR:-/tmp}/crb-tests-$$"
+TMP_BASE="$(mktemp -d "${TMPDIR:-/tmp}/crb-tests-XXXXXX")" || exit 1
 FAILURES=0
 
-mkdir -p "$TMP_BASE"
 trap 'rm -rf "$TMP_BASE"' EXIT
 
 fail() {
@@ -55,9 +55,10 @@ assert_empty() {
 make_repo() {
   local name="$1"
   local repo="$TMP_BASE/$name"
-  mkdir -p "$repo"
+  mkdir -p "$repo" || return 1
   (
-    cd "$repo" || exit 1
+    set -e
+    cd "$repo"
     git init -q
     git config user.email "crb@example.test"
     git config user.name "CRB Tests"
@@ -66,34 +67,47 @@ make_repo() {
     printf '# original\n' > README.md
     git add app.js README.md
     git commit -q -m "initial"
-  )
+  ) || return 1
   printf '%s\n' "$repo"
 }
 
 DEFAULT_TOGGLE_FILE="$TMP_BASE/crb-toggle-default"
 printf '1\n' > "$DEFAULT_TOGGLE_FILE"
 
+make_stop_input() {
+  node -e 'process.stdout.write(JSON.stringify({session_id: process.argv[1], cwd: process.argv[2]}))' "$1" "$2"
+}
+
+make_file_input() {
+  node -e 'process.stdout.write(JSON.stringify({session_id: process.argv[1], cwd: process.argv[2], tool_input: {file_path: process.argv[3]}}))' "$1" "$2" "$3"
+}
+
 run_hook() {
   local hook="$1"
   local input="$2"
   local stdout_file="$TMP_BASE/stdout"
   local stderr_file="$TMP_BASE/stderr"
+  local input_file="$TMP_BASE/input"
   local state_dir="${CRB_STATE_DIR:-$TMP_BASE/state}"
   local toggle_file="${CRB_TOGGLE_FILE:-$DEFAULT_TOGGLE_FILE}"
   mkdir -p "$state_dir"
-  rm -f "$stdout_file" "$stderr_file"
-  printf '%s' "$input" | CRB_TOGGLE_FILE="$toggle_file" CRB_STATE_DIR="$state_dir" "$hook" >"$stdout_file" 2>"$stderr_file"
-  local status=$?
-  HOOK_STATUS="$status"
+  rm -f "$stdout_file" "$stderr_file" "$input_file"
+  printf '%s' "$input" > "$input_file" || { HOOK_STATUS=1; HOOK_STDOUT=""; HOOK_STDERR="run_hook: failed to write input file"; return; }
+  if CRB_TOGGLE_FILE="$toggle_file" CRB_STATE_DIR="$state_dir" "$hook" <"$input_file" >"$stdout_file" 2>"$stderr_file"; then
+    HOOK_STATUS=0
+  else
+    HOOK_STATUS=$?
+  fi
   HOOK_STDOUT="$(cat "$stdout_file" 2>/dev/null || true)"
   HOOK_STDERR="$(cat "$stderr_file" 2>/dev/null || true)"
 }
 
 test_stop_lgtm_exits_silent() {
-  local repo
-  repo="$(make_repo stop-lgtm)"
+  local repo input
+  repo="$(make_repo stop-lgtm)" || { fail "repo setup failed"; return; }
+  input="$(make_stop_input stop-lgtm "$repo")" || { fail "input generation failed"; return; }
   printf 'console.log("changed");\n' > "$repo/app.js"
-  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=LGTM run_hook "$STOP_HOOK" "{\"session_id\":\"stop-lgtm\",\"cwd\":\"$repo\"}"
+  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=LGTM run_hook "$STOP_HOOK" "$input"
 
   assert_eq "0" "$HOOK_STATUS" "Stop LGTM exits 0"
   assert_empty "$HOOK_STDOUT" "Stop LGTM stdout is empty"
@@ -101,10 +115,11 @@ test_stop_lgtm_exits_silent() {
 }
 
 test_stop_minor_exits_2_with_stderr() {
-  local repo
-  repo="$(make_repo stop-minor)"
+  local repo input
+  repo="$(make_repo stop-minor)" || { fail "repo setup failed"; return; }
+  input="$(make_stop_input stop-minor "$repo")" || { fail "input generation failed"; return; }
   printf 'console.log("minor");\n' > "$repo/app.js"
-  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR run_hook "$STOP_HOOK" "{\"session_id\":\"stop-minor\",\"cwd\":\"$repo\"}"
+  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR run_hook "$STOP_HOOK" "$input"
 
   assert_eq "2" "$HOOK_STATUS" "Stop MINOR exits 2"
   assert_empty "$HOOK_STDOUT" "Stop MINOR stdout is empty"
@@ -113,10 +128,11 @@ test_stop_minor_exits_2_with_stderr() {
 }
 
 test_stop_major_system_message() {
-  local repo
-  repo="$(make_repo stop-major)"
+  local repo input
+  repo="$(make_repo stop-major)" || { fail "repo setup failed"; return; }
+  input="$(make_stop_input stop-major "$repo")" || { fail "input generation failed"; return; }
   printf 'console.log("major");\n' > "$repo/app.js"
-  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MAJOR run_hook "$STOP_HOOK" "{\"session_id\":\"stop-major\",\"cwd\":\"$repo\"}"
+  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MAJOR run_hook "$STOP_HOOK" "$input"
 
   assert_eq "0" "$HOOK_STATUS" "Stop MAJOR exits 0"
   assert_contains "$HOOK_STDOUT" '"systemMessage"' "Stop MAJOR stdout contains systemMessage"
@@ -125,16 +141,17 @@ test_stop_major_system_message() {
 }
 
 test_stop_loop_cap_exits_silent() {
-  local repo
-  repo="$(make_repo stop-loop-cap)"
+  local repo input
+  repo="$(make_repo stop-loop-cap)" || { fail "repo setup failed"; return; }
+  input="$(make_stop_input loop-cap "$repo")" || { fail "input generation failed"; return; }
   printf 'console.log("loop");\n' > "$repo/app.js"
   local state_dir="$TMP_BASE/state"
   mkdir -p "$state_dir"
 
-  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR CRB_STATE_DIR="$state_dir" run_hook "$STOP_HOOK" "{\"session_id\":\"loop-cap\",\"cwd\":\"$repo\"}"
-  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR CRB_STATE_DIR="$state_dir" run_hook "$STOP_HOOK" "{\"session_id\":\"loop-cap\",\"cwd\":\"$repo\"}"
-  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR CRB_STATE_DIR="$state_dir" run_hook "$STOP_HOOK" "{\"session_id\":\"loop-cap\",\"cwd\":\"$repo\"}"
-  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR CRB_STATE_DIR="$state_dir" run_hook "$STOP_HOOK" "{\"session_id\":\"loop-cap\",\"cwd\":\"$repo\"}"
+  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR CRB_STATE_DIR="$state_dir" run_hook "$STOP_HOOK" "$input"
+  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR CRB_STATE_DIR="$state_dir" run_hook "$STOP_HOOK" "$input"
+  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR CRB_STATE_DIR="$state_dir" run_hook "$STOP_HOOK" "$input"
+  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR CRB_STATE_DIR="$state_dir" run_hook "$STOP_HOOK" "$input"
 
   assert_eq "0" "$HOOK_STATUS" "Stop loop cap exits 0 after three rounds"
   assert_empty "$HOOK_STDOUT" "Stop loop cap stdout is empty"
@@ -142,22 +159,24 @@ test_stop_loop_cap_exits_silent() {
 }
 
 test_stop_includes_staged_changes() {
-  local repo
-  repo="$(make_repo stop-staged)"
+  local repo input
+  repo="$(make_repo stop-staged)" || { fail "repo setup failed"; return; }
+  input="$(make_stop_input stop-staged "$repo")" || { fail "input generation failed"; return; }
   printf 'console.log("staged");\n' > "$repo/app.js"
   (cd "$repo" && git add app.js)
 
-  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR run_hook "$STOP_HOOK" "{\"session_id\":\"stop-staged\",\"cwd\":\"$repo\"}"
+  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR run_hook "$STOP_HOOK" "$input"
 
   assert_eq "2" "$HOOK_STATUS" "Stop reviews staged changes from git diff HEAD"
   assert_contains "$HOOK_STDERR" "[CRB]" "Stop staged change gets reviewed with CRB header"
 }
 
 test_file_untracked_is_skipped() {
-  local repo
-  repo="$(make_repo file-untracked)"
+  local repo input
+  repo="$(make_repo file-untracked)" || { fail "repo setup failed"; return; }
+  input="$(make_file_input file-untracked "$repo" "$repo/new.js")" || { fail "input generation failed"; return; }
   printf 'console.log("new");\n' > "$repo/new.js"
-  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MAJOR run_hook "$FILE_HOOK" "{\"session_id\":\"file-untracked\",\"cwd\":\"$repo\",\"tool_input\":{\"file_path\":\"$repo/new.js\"}}"
+  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MAJOR run_hook "$FILE_HOOK" "$input"
 
   assert_eq "0" "$HOOK_STATUS" "File hook skips untracked files with exit 0"
   assert_empty "$HOOK_STDOUT" "File untracked skip stdout is empty"
@@ -165,10 +184,11 @@ test_file_untracked_is_skipped() {
 }
 
 test_file_non_code_is_skipped() {
-  local repo
-  repo="$(make_repo file-non-code)"
+  local repo input
+  repo="$(make_repo file-non-code)" || { fail "repo setup failed"; return; }
+  input="$(make_file_input file-non-code "$repo" "$repo/README.md")" || { fail "input generation failed"; return; }
   printf '# changed\n' > "$repo/README.md"
-  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MAJOR run_hook "$FILE_HOOK" "{\"session_id\":\"file-non-code\",\"cwd\":\"$repo\",\"tool_input\":{\"file_path\":\"$repo/README.md\"}}"
+  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MAJOR run_hook "$FILE_HOOK" "$input"
 
   assert_eq "0" "$HOOK_STATUS" "File hook skips non-code files with exit 0"
   assert_empty "$HOOK_STDOUT" "File non-code skip stdout is empty"
@@ -176,10 +196,11 @@ test_file_non_code_is_skipped() {
 }
 
 test_file_major_additional_context() {
-  local repo
-  repo="$(make_repo file-major)"
+  local repo input
+  repo="$(make_repo file-major)" || { fail "repo setup failed"; return; }
+  input="$(make_file_input file-major "$repo" "$repo/app.js")" || { fail "input generation failed"; return; }
   printf 'console.log("major");\n' > "$repo/app.js"
-  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MAJOR run_hook "$FILE_HOOK" "{\"session_id\":\"file-major\",\"cwd\":\"$repo\",\"tool_input\":{\"file_path\":\"$repo/app.js\"}}"
+  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MAJOR run_hook "$FILE_HOOK" "$input"
 
   assert_eq "0" "$HOOK_STATUS" "File hook MAJOR exits 0"
   assert_contains "$HOOK_STDOUT" '"hookSpecificOutput"' "File MAJOR emits hookSpecificOutput"
@@ -189,10 +210,11 @@ test_file_major_additional_context() {
 }
 
 test_file_minor_is_ignored() {
-  local repo
-  repo="$(make_repo file-minor)"
+  local repo input
+  repo="$(make_repo file-minor)" || { fail "repo setup failed"; return; }
+  input="$(make_file_input file-minor "$repo" "$repo/app.js")" || { fail "input generation failed"; return; }
   printf 'console.log("minor");\n' > "$repo/app.js"
-  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR run_hook "$FILE_HOOK" "{\"session_id\":\"file-minor\",\"cwd\":\"$repo\",\"tool_input\":{\"file_path\":\"$repo/app.js\"}}"
+  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR run_hook "$FILE_HOOK" "$input"
 
   assert_eq "0" "$HOOK_STATUS" "File hook MINOR exits 0"
   assert_empty "$HOOK_STDOUT" "File MINOR stdout is empty"
@@ -209,25 +231,25 @@ test_schema_path_exists() {
 
 test_marketplace_source_points_at_plugin_root() {
   local source
-  source="$(node -e 'const fs=require("fs"); const m=JSON.parse(fs.readFileSync(".claude-plugin/marketplace.json","utf8")); process.stdout.write(String(m.plugins[0].source));' 2>/dev/null || true)"
+  source="$(cd "$ROOT" && node -e 'const fs=require("fs"); const m=JSON.parse(fs.readFileSync(".claude-plugin/marketplace.json","utf8")); process.stdout.write(String(m.plugins[0].source));' 2>/dev/null || true)"
   assert_eq "./" "$source" "Marketplace source points at plugin root"
 }
 
 test_plugin_manifest_does_not_duplicate_standard_hooks() {
   local has_hooks
-  has_hooks="$(node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync(".claude-plugin/plugin.json","utf8")); process.stdout.write(String(Object.prototype.hasOwnProperty.call(p, "hooks")));' 2>/dev/null || true)"
+  has_hooks="$(cd "$ROOT" && node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync(".claude-plugin/plugin.json","utf8")); process.stdout.write(String(Object.prototype.hasOwnProperty.call(p, "hooks")));' 2>/dev/null || true)"
   assert_eq "false" "$has_hooks" "Plugin manifest does not duplicate auto-loaded hooks/hooks.json"
 }
 
 test_skill_doc_has_no_mojibake() {
   local mojibake
-  mojibake="$(node -e 'const fs=require("fs"); const text=fs.readFileSync("skills/crb/SKILL.md","utf8"); process.stdout.write(text.includes("\u00e2") ? "yes" : "no");')"
+  mojibake="$(cd "$ROOT" && node -e 'const fs=require("fs"); const text=fs.readFileSync("skills/crb/SKILL.md","utf8"); process.stdout.write(text.includes("\u00e2") ? "yes" : "no");')"
   assert_eq "no" "$mojibake" "Skill doc has no mojibake"
 }
 
 test_public_docs_have_no_mojibake() {
   local mojibake
-  mojibake="$(node -e '
+  mojibake="$(cd "$ROOT" && node -e '
 const fs = require("fs");
 const files = ["README.md", "SPEC.md", "commands/crb.md", "skills/crb/SKILL.md", ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"];
 const bad = files.filter((file) => fs.readFileSync(file, "utf8").includes("\u00e2"));
@@ -249,9 +271,11 @@ test_doctor_resolves_installed_plugin_hook() {
   if home_win="$(cd "$TMP_BASE/home" && pwd -W 2>/dev/null)"; then
     home_for_node="$home_win"
   fi
-  cat >"$metadata_dir/installed_plugins.json" <<EOF
-{"plugins":{"claude-codex-review-bridge@claude-codex-review-bridge":[{"scope":"user","installPath":"$plugin_root_for_node","version":"test"}]}}
-EOF
+  node -e '
+const fs = require("fs");
+const data = { plugins: { "claude-codex-review-bridge@claude-codex-review-bridge": [{ scope: "user", installPath: process.argv[1], version: "test" }] } };
+fs.writeFileSync(process.argv[2], JSON.stringify(data));
+' "$plugin_root_for_node" "$metadata_dir/installed_plugins.json"
   local resolved
   resolved="$(HOME="$home_for_node" node <<'NODE'
 const fs = require("fs");
@@ -282,13 +306,35 @@ test_doctor_documents_installed_plugin_fallback() {
   assert_contains "$content" "installed_plugins.json" "Doctor checks installed plugin metadata when env vars are missing"
 }
 
+test_doctor_script_dry_run_passes() {
+  if [[ ! -x "$DOCTOR_HOOK" ]]; then
+    fail "Doctor script exists and is executable"
+    return
+  fi
+
+  local fake_home="$TMP_BASE/home-doctor"
+  local fake_tmpdir="$TMP_BASE/doctor-tmp"
+  local fake_state="$TMP_BASE/doctor-state"
+  local fake_toggle="$TMP_BASE/doctor-toggle"
+  mkdir -p "$fake_home/.claude/plugins" "$fake_tmpdir" "$fake_state"
+  printf '1\n' > "$fake_toggle"
+
+  local output
+  if ! output="$(HOME="$fake_home" TMPDIR="$fake_tmpdir" CRB_STATE_DIR="$fake_state" CRB_TOGGLE_FILE="$fake_toggle" CRB_DRY_RUN=1 "$DOCTOR_HOOK" 2>&1)"; then
+    fail "Doctor script dry run exits successfully: $output"
+    return
+  fi
+  assert_contains "$output" "Hook dry run: PASS" "Doctor script exercises stop hook dry run"
+}
+
 test_install_requires_force() {
   local settings="$TMP_BASE/settings.json"
+  local fake_home="$TMP_BASE/home-install-no-force"
+  mkdir -p "$fake_home/.claude"
   printf '{}\n' > "$settings"
-  CRB_SETTINGS_PATH="$settings" "$INSTALL_SCRIPT" >"$TMP_BASE/install.stdout" 2>"$TMP_BASE/install.stderr"
-  local status=$?
-  local stdout
-  stdout="$(cat "$TMP_BASE/install.stdout")"
+  local stdout status
+  stdout="$(HOME="$fake_home" CRB_SETTINGS_PATH="$settings" "$INSTALL_SCRIPT" 2>"$TMP_BASE/install.stderr")"
+  status=$?
 
   assert_eq "1" "$status" "install.sh refuses to modify settings without --force"
   assert_contains "$stdout" "--force" "install.sh explains --force requirement"
@@ -296,9 +342,12 @@ test_install_requires_force() {
 
 test_install_force_patches_settings() {
   local settings="$TMP_BASE/settings-force.json"
+  local fake_home="$TMP_BASE/home-install-force"
+  mkdir -p "$fake_home/.claude"
   printf '{"permissions":{"allow":["Bash(existing)"]}}\n' > "$settings"
-  CRB_SETTINGS_PATH="$settings" "$INSTALL_SCRIPT" --force >"$TMP_BASE/install-force.stdout" 2>"$TMP_BASE/install-force.stderr"
-  local status=$?
+  local status
+  HOME="$fake_home" CRB_SETTINGS_PATH="$settings" "$INSTALL_SCRIPT" --force >"$TMP_BASE/install-force.stdout" 2>"$TMP_BASE/install-force.stderr"
+  status=$?
   local content
   content="$(cat "$settings")"
 
@@ -312,11 +361,11 @@ test_install_force_patches_settings() {
 
 test_toggle_disabled_skips_review() {
   local repo
-  repo="$(make_repo toggle-off)"
+  repo="$(make_repo toggle-off)" || { fail "repo setup failed"; return; }
   printf 'console.log("changed");\n' > "$repo/app.js"
   local toggle_file="$TMP_BASE/toggle-test"
   printf '0\n' > "$toggle_file"
-  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MAJOR CRB_TOGGLE_FILE="$toggle_file" run_hook "$STOP_HOOK" "{\"session_id\":\"toggle-off\",\"cwd\":\"$repo\"}"
+  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MAJOR CRB_TOGGLE_FILE="$toggle_file" run_hook "$STOP_HOOK" "$(make_stop_input toggle-off "$repo")"
 
   assert_eq "0" "$HOOK_STATUS" "Disabled CRB exits 0"
   assert_empty "$HOOK_STDOUT" "Disabled CRB stdout is empty"
@@ -325,11 +374,11 @@ test_toggle_disabled_skips_review() {
 
 test_toggle_enabled_runs_review() {
   local repo
-  repo="$(make_repo toggle-on)"
+  repo="$(make_repo toggle-on)" || { fail "repo setup failed"; return; }
   printf 'console.log("changed");\n' > "$repo/app.js"
   local toggle_file="$TMP_BASE/toggle-test-on"
   printf '1\n' > "$toggle_file"
-  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR CRB_TOGGLE_FILE="$toggle_file" run_hook "$STOP_HOOK" "{\"session_id\":\"toggle-on\",\"cwd\":\"$repo\"}"
+  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR CRB_TOGGLE_FILE="$toggle_file" run_hook "$STOP_HOOK" "$(make_stop_input toggle-on "$repo")"
 
   assert_eq "2" "$HOOK_STATUS" "Enabled CRB runs review"
   assert_contains "$HOOK_STDERR" "[CRB]" "Enabled CRB produces feedback"
@@ -337,13 +386,13 @@ test_toggle_enabled_runs_review() {
 
 test_max_rounds_clamped_to_5() {
   local repo
-  repo="$(make_repo max-rounds-clamp)"
+  repo="$(make_repo max-rounds-clamp)" || { fail "repo setup failed"; return; }
   printf 'console.log("changed");\n' > "$repo/app.js"
   local state_dir="$TMP_BASE/state-clamp"
   mkdir -p "$state_dir"
   # Pre-set counter to 5 (simulating 5 rounds already done)
   printf '5\n' > "$state_dir/codex-review-max-rounds-clamp-count"
-  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR CRB_STATE_DIR="$state_dir" CRB_MAX_ROUNDS=999 run_hook "$STOP_HOOK" "{\"session_id\":\"max-rounds-clamp\",\"cwd\":\"$repo\"}"
+  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MINOR CRB_STATE_DIR="$state_dir" CRB_MAX_ROUNDS=999 run_hook "$STOP_HOOK" "$(make_stop_input max-rounds-clamp "$repo")"
 
   assert_eq "0" "$HOOK_STATUS" "MAX_ROUNDS=999 clamped to 5, exits 0 after 5 rounds"
   assert_empty "$HOOK_STDOUT" "Clamped max-rounds stdout is empty"
@@ -369,6 +418,7 @@ test_skill_doc_has_no_mojibake
 test_public_docs_have_no_mojibake
 test_doctor_resolves_installed_plugin_hook
 test_doctor_documents_installed_plugin_fallback
+test_doctor_script_dry_run_passes
 test_install_requires_force
 test_install_force_patches_settings
 
