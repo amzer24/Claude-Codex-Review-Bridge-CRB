@@ -1,0 +1,28 @@
+{
+  "description": "Claude-Codex Review Bridge: automated code review via Codex CLI",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/codex-review-stop.sh\"",
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/codex-review-file.sh\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
