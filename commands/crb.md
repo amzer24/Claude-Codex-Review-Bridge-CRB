@@ -38,11 +38,19 @@ Report:
 - If file missing: "CRB is **disabled** (default). Run `/crb on` to enable."
 
 ### `log`
-Run: `tail -30 "${TMPDIR:-/tmp}/codex-review.log" 2>/dev/null || echo "No log file found."`
+The log file location depends on install method. Check both:
+```bash
+CRB_DIR="${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}}"
+tail -30 "$CRB_DIR/codex-review.log" 2>/dev/null || tail -30 "${TMPDIR:-/tmp}/codex-review.log" 2>/dev/null || echo "No log file found."
+```
 Show the output to the user.
 
 ### `reset`
-Run: `rm -f "${TMPDIR:-/tmp}"/codex-review-*-count`
+Reset counters in both possible locations:
+```bash
+CRB_DIR="${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}}"
+rm -f "$CRB_DIR"/codex-review-*-count "${TMPDIR:-/tmp}"/codex-review-*-count 2>/dev/null
+```
 Then confirm: "Review loop counters reset."
 
 ### `fast`
@@ -91,8 +99,13 @@ cat ~/.crb-enabled 2>/dev/null || echo "not set (disabled by default)"
 echo "Model: $(cat ~/.crb-model 2>/dev/null || echo 'default (gpt-5.4)')"
 echo "Reasoning: $(cat ~/.crb-reasoning 2>/dev/null || echo 'default (medium)')"
 
-# 7. Dry run test
-echo '{"session_id":"doctor","cwd":"/tmp"}' | CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=LGTM CRB_TOGGLE_FILE=<(echo 1) bash hooks/codex-review-stop.sh >/dev/null 2>&1 && echo "Dry run: PASS" || echo "Dry run: FAIL"
+# 7. Dry run - create a temp git repo with a change to exercise the full hook path
+DOCTOR_TMP="$(mktemp -d)"
+(cd "$DOCTOR_TMP" && git init -q && git config user.email "crb@test" && git config user.name "CRB" && echo "x" > f.js && git add f.js && git commit -qm init && echo "y" > f.js)
+# Find the hook script: plugin install or local
+CRB_HOOK="${CLAUDE_PLUGIN_ROOT:-$(pwd)}/hooks/codex-review-stop.sh"
+echo "{\"session_id\":\"doctor\",\"cwd\":\"$DOCTOR_TMP\"}" | CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=LGTM CRB_TOGGLE_FILE=<(echo 1) bash "$CRB_HOOK" >/dev/null 2>&1 && echo "Dry run: PASS" || echo "Dry run: FAIL"
+rm -rf "$DOCTOR_TMP"
 ```
 
 Format the output as a clean checklist showing each component's status.

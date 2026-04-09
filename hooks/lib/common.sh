@@ -163,13 +163,14 @@ crb_run_codex_review() {
   fi
 
   # Model selection: env vars override, then files, then defaults
+  # Validate to prevent shell injection — only allow alphanumeric, dots, hyphens
   local model="${CRB_MODEL:-}"
   if [[ -z "$model" && -f "$HOME/.crb-model" ]]; then
     model="$(cat "$HOME/.crb-model" 2>/dev/null | tr -d '[:space:]')"
   fi
-  local model_args=""
-  if [[ -n "$model" ]]; then
-    model_args="-m $model"
+  if [[ -n "$model" && ! "$model" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    crb_log "Invalid CRB_MODEL value: $model"
+    model=""
   fi
 
   local reasoning="${CRB_REASONING:-}"
@@ -177,33 +178,36 @@ crb_run_codex_review() {
     reasoning="$(cat "$HOME/.crb-reasoning" 2>/dev/null | tr -d '[:space:]')"
   fi
   reasoning="${reasoning:-medium}"
-  local config_args=""
   case "$reasoning" in
     none|minimal|low|medium|high|xhigh) ;;
     *) reasoning="medium" ;;
   esac
-  config_args="-c model_reasoning_effort=$reasoning -c model_verbosity=low"
 
-  # Hardened codex exec flags:
-  # --sandbox read-only: reviewer cannot write files
-  # --ephemeral: no persisted session clutter
-  # --color never: no ANSI codes in output
-  # --skip-git-repo-check: works in any directory
-  local base_args="--sandbox read-only --ephemeral --color never --skip-git-repo-check"
+  # Build command as array to avoid eval/shell injection
+  local -a cmd=(codex exec
+    --output-schema "$schema_path"
+    --sandbox read-only
+    --ephemeral
+    --color never
+    --skip-git-repo-check
+    -c "model_reasoning_effort=$reasoning"
+    -c "model_verbosity=low"
+  )
+  if [[ -n "$model" ]]; then
+    cmd+=(-m "$model")
+  fi
+  cmd+=(-)
 
   # Suppress Codex stderr (thinking tokens, progress) unless CRB_DEBUG=1
   local stderr_target="/dev/null"
   if [[ "${CRB_DEBUG:-0}" == "1" ]]; then
-    local log_file="${CRB_LOG_FILE:-$CRB_DATA_DIR/codex-review.log}"
-    stderr_target="$log_file"
+    stderr_target="${CRB_LOG_FILE:-$CRB_DATA_DIR/codex-review.log}"
   fi
 
-  local cmd="codex exec --output-schema \"$schema_path\" $base_args $model_args $config_args -"
-
   if command -v timeout >/dev/null 2>&1; then
-    eval "timeout ${timeout_seconds}s $cmd" 2>>"$stderr_target"
+    timeout "${timeout_seconds}s" "${cmd[@]}" 2>>"$stderr_target"
   else
-    eval "$cmd" 2>>"$stderr_target"
+    "${cmd[@]}" 2>>"$stderr_target"
   fi
 }
 
