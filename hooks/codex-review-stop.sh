@@ -61,6 +61,8 @@ ROUND="$((COUNT + 1))"
 printf '%s\n' "$ROUND" >"$COUNT_FILE" 2>/dev/null || true
 crb_log "Stop hook: starting review round $ROUND/$MAX_ROUNDS"
 
+SAFE_DIFF="$(printf '%s' "$DIFF_OUTPUT" | crb_escape_fences)"
+
 PROMPT="$(cat <<EOF
 You are a senior code reviewer. Review this git diff for:
 - Bugs, logic errors, off-by-one errors
@@ -72,7 +74,7 @@ Return structured JSON matching the output schema.
 
 Git diff:
 \`\`\`diff
-$DIFF_OUTPUT
+$SAFE_DIFF
 \`\`\`
 EOF
 )"
@@ -86,6 +88,7 @@ SEVERITY="$(printf '%s' "$REVIEW_OUTPUT" | crb_review_severity 2>/dev/null || tr
 case "$SEVERITY" in
   LGTM)
     crb_log "Stop hook review result: LGTM (round $ROUND/$MAX_ROUNDS)"
+    rm -f "$COUNT_FILE" 2>/dev/null || true
     exit 0
     ;;
   MINOR)

@@ -63,6 +63,8 @@ else
   CHANGE_CONTENT="$(printf '%s' "$HOOK_INPUT" | crb_json_get "tool_input.content")"
 fi
 
+SAFE_CONTENT="$(printf '%s' "$CHANGE_CONTENT" | crb_escape_fences)"
+
 PROMPT="$(cat <<EOF
 You are a senior code reviewer. Review this changed file for major issues only:
 - Bugs or logic errors that are likely to break behavior
@@ -74,7 +76,7 @@ Return structured JSON matching the output schema. Use LGTM or MINOR for issues 
 
 File: $GIT_FILE_PATH
 \`\`\`
-$CHANGE_CONTENT
+$SAFE_CONTENT
 \`\`\`
 EOF
 )"

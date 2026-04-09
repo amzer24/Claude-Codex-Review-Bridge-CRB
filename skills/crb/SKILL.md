@@ -21,7 +21,7 @@ echo "0" > ~/.crb-enabled
 
 **Check status:**
 ```bash
-cat ~/.crb-enabled 2>/dev/null || echo "enabled (default)"
+cat ~/.crb-enabled 2>/dev/null || echo "disabled (default - opt in with: echo 1 > ~/.crb-enabled)"
 ```
 
 When enabled, Codex automatically reviews:

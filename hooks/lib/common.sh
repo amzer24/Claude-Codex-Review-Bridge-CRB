@@ -9,8 +9,9 @@ crb_is_enabled() {
     val="$(cat "$CRB_TOGGLE_FILE" 2>/dev/null | tr -d '[:space:]')"
     [[ "$val" == "1" || "$val" == "true" ]]
   else
-    # Default: enabled (no toggle file = on)
-    return 0
+    # Default: disabled (no toggle file = off)
+    # User must explicitly opt in with: echo 1 > ~/.crb-enabled
+    return 1
   fi
 }
 
@@ -174,6 +175,15 @@ crb_is_code_file() {
       return 1
       ;;
   esac
+}
+
+crb_escape_fences() {
+  # Replace triple backticks with safe alternative to prevent fence breaking
+  node -e '
+const fs = require("fs");
+const input = fs.readFileSync(0, "utf8");
+process.stdout.write(input.replace(/`{3,}/g, "\\x60\\x60\\x60"));
+'
 }
 
 crb_sanitize_session_id() {

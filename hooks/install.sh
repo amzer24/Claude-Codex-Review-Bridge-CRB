@@ -3,7 +3,7 @@ set -u -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-SETTINGS_PATH="${CRB_SETTINGS_PATH:-$HOME/.claude/settings.json}"
+SETTINGS_PATH="${CRB_SETTINGS_PATH:-$PROJECT_DIR/.claude/settings.local.json}"
 FORCE=0
 
 for arg in "$@"; do
@@ -19,6 +19,9 @@ Adds Claude Code Stop and PostToolUse hooks for Claude-Codex Review Bridge.
 
 By default this script prints what it would do and exits without modifying
 settings. Pass --force to patch the settings file.
+
+Installs hooks to project-scoped settings (.claude/settings.local.json)
+so they only apply to this project, not globally.
 
 Environment:
   CRB_SETTINGS_PATH  Override Claude settings path.
@@ -54,13 +57,19 @@ EOF
   exit 1
 fi
 
-mkdir -p "$(dirname "$SETTINGS_PATH")"
+if ! mkdir -p "$(dirname "$SETTINGS_PATH")" 2>/dev/null; then
+  printf 'Error: cannot create directory for %s\n' "$SETTINGS_PATH" >&2
+  exit 1
+fi
 if [[ ! -f "$SETTINGS_PATH" ]]; then
   printf '{}\n' >"$SETTINGS_PATH"
 fi
 
 BACKUP_PATH="$SETTINGS_PATH.bak.$(date -u '+%Y%m%d%H%M%S')"
-cp "$SETTINGS_PATH" "$BACKUP_PATH"
+if ! cp "$SETTINGS_PATH" "$BACKUP_PATH"; then
+  printf 'Error: cannot create backup at %s\n' "$BACKUP_PATH" >&2
+  exit 1
+fi
 
 SETTINGS_PATH="$SETTINGS_PATH" node <<'NODE'
 const fs = require("fs");
@@ -107,5 +116,11 @@ if (!settings.hooks.PostToolUse.some((entry) => entry.matcher === "Write|Edit" &
 
 fs.writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
 NODE
+
+if [[ $? -ne 0 ]]; then
+  printf '\nError: settings patch failed. Restoring backup.\n' >&2
+  cp "$BACKUP_PATH" "$SETTINGS_PATH"
+  exit 1
+fi
 
 printf '\nUpdated settings. Backup written to %s\n' "$BACKUP_PATH"

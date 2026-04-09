@@ -70,15 +70,19 @@ make_repo() {
   printf '%s\n' "$repo"
 }
 
+DEFAULT_TOGGLE_FILE="$TMP_BASE/crb-toggle-default"
+printf '1\n' > "$DEFAULT_TOGGLE_FILE"
+
 run_hook() {
   local hook="$1"
   local input="$2"
   local stdout_file="$TMP_BASE/stdout"
   local stderr_file="$TMP_BASE/stderr"
   local state_dir="${CRB_STATE_DIR:-$TMP_BASE/state}"
+  local toggle_file="${CRB_TOGGLE_FILE:-$DEFAULT_TOGGLE_FILE}"
   mkdir -p "$state_dir"
   rm -f "$stdout_file" "$stderr_file"
-  printf '%s' "$input" | CRB_STATE_DIR="$state_dir" "$hook" >"$stdout_file" 2>"$stderr_file"
+  printf '%s' "$input" | CRB_TOGGLE_FILE="$toggle_file" CRB_STATE_DIR="$state_dir" "$hook" >"$stdout_file" 2>"$stderr_file"
   local status=$?
   HOOK_STATUS="$status"
   HOOK_STDOUT="$(cat "$stdout_file" 2>/dev/null || true)"
