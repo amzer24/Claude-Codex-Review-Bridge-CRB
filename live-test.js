@@ -1,8 +1,9 @@
-// Rate limiter - allows N requests per window
+// Rate limiter — allows N requests per sliding window
 function createRateLimiter(maxRequests, windowMs) {
   const clients = new Map();
+  let cleanupInterval = null;
 
-  return function checkRate(clientId) {
+  function checkRate(clientId) {
     const now = Date.now();
     let record = clients.get(clientId);
 
@@ -18,7 +19,28 @@ function createRateLimiter(maxRequests, windowMs) {
     }
 
     return { allowed: true, remaining: maxRequests - record.count };
-  };
+  }
+
+  function startCleanup(intervalMs) {
+    stopCleanup();
+    cleanupInterval = setInterval(() => {
+      const now = Date.now();
+      for (const [key, record] of clients) {
+        if (now - record.start > windowMs) {
+          clients.delete(key);
+        }
+      }
+    }, intervalMs);
+  }
+
+  function stopCleanup() {
+    if (cleanupInterval !== null) {
+      clearInterval(cleanupInterval);
+      cleanupInterval = null;
+    }
+  }
+
+  return { checkRate, startCleanup, stopCleanup };
 }
 
 module.exports = { createRateLimiter };

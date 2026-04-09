@@ -52,12 +52,15 @@ if ! crb_is_code_file "$GIT_FILE_PATH"; then
   exit 0
 fi
 
-CHANGE_CONTENT="$(printf '%s' "$HOOK_INPUT" | crb_json_get "tool_input.content")"
-if [[ -z "$CHANGE_CONTENT" ]]; then
-  CHANGE_CONTENT="$(printf '%s' "$HOOK_INPUT" | crb_json_get "tool_input.new_string")"
-fi
-if [[ -z "$CHANGE_CONTENT" && -f "$GIT_FILE_PATH" ]]; then
+# Always send the full file to Codex for complete context.
+# tool_input.new_string (Edit) is only a partial snippet and causes
+# false positives when Codex can't see the rest of the file.
+if [[ -f "$GIT_FILE_PATH" ]]; then
   CHANGE_CONTENT="$(cat "$GIT_FILE_PATH")"
+elif [[ -f "$FILE_PATH" ]]; then
+  CHANGE_CONTENT="$(cat "$FILE_PATH")"
+else
+  CHANGE_CONTENT="$(printf '%s' "$HOOK_INPUT" | crb_json_get "tool_input.content")"
 fi
 
 PROMPT="$(cat <<EOF
