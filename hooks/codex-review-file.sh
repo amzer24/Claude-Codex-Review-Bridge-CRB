@@ -79,11 +79,24 @@ SEVERITY="$(printf '%s' "$REVIEW_OUTPUT" | crb_review_severity 2>/dev/null || tr
 case "$SEVERITY" in
   MAJOR)
     crb_log "PostToolUse hook review result: MAJOR"
-    printf '%s' "$(
-      printf '%s' "$REVIEW_OUTPUT" |
-        crb_format_review "Codex found major issue in $GIT_FILE_PATH:" |
-        crb_json_post_tool_context
-    )"
+    FORMATTED="$(printf '%s' "$REVIEW_OUTPUT" | crb_format_review "Codex found major issue in $GIT_FILE_PATH:")"
+    if [[ "${CRB_STRICT_POSTTOOL:-0}" == "1" ]]; then
+      # Strict mode: block + reason forces Claude to address before continuing
+      node -e '
+const fs = require("fs");
+const msg = fs.readFileSync(0, "utf8");
+process.stdout.write(JSON.stringify({
+  decision: "block",
+  reason: msg,
+  hookSpecificOutput: {
+    hookEventName: "PostToolUse",
+    additionalContext: msg
+  }
+}));
+' <<< "$FORMATTED"
+    else
+      printf '%s' "$FORMATTED" | crb_json_post_tool_context
+    fi
     exit 0
     ;;
   LGTM|MINOR)

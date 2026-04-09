@@ -131,8 +131,10 @@ Set `CRB_PROMPT_FILE=.crb-prompt` in your environment. Codex will incorporate th
 | `CRB_CODEX_TIMEOUT_SECONDS` | `120` | Codex call timeout (1-120s) |
 | `CRB_MODEL` | `gpt-5.4` | Codex model (`gpt-5.4-mini`, `gpt-5.3-codex`, etc.) |
 | `CRB_REASONING` | `medium` | Reasoning effort (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`) |
+| `CRB_STRICT_POSTTOOL` | `0` | `1` to block Claude on MAJOR per-file issues |
+| `CRB_DEBUG` | `0` | `1` to log Codex stderr (thinking tokens) |
 | `CRB_DRY_RUN` | `0` | `1` to test without calling Codex |
-| `CRB_LOG_FILE` | `$TMPDIR/codex-review.log` | Log location |
+| `CRB_LOG_FILE` | `$CLAUDE_PLUGIN_DATA/codex-review.log` | Log location |
 
 ---
 

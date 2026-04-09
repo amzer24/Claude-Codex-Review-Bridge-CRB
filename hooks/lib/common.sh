@@ -3,6 +3,10 @@
 CRB_TOGGLE_FILE="${CRB_TOGGLE_FILE:-$HOME/.crb-enabled}"
 CRB_MAX_ROUNDS="${CRB_MAX_ROUNDS:-3}"
 
+# Use CLAUDE_PLUGIN_DATA for persistent state when running as a plugin,
+# fall back to TMPDIR for manual installs
+CRB_DATA_DIR="${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}}"
+
 crb_is_enabled() {
   if [[ -f "$CRB_TOGGLE_FILE" ]]; then
     local val
@@ -17,7 +21,7 @@ crb_is_enabled() {
 
 crb_log() {
   local message="$1"
-  local log_file="${CRB_LOG_FILE:-${TMPDIR:-/tmp}/codex-review.log}"
+  local log_file="${CRB_LOG_FILE:-$CRB_DATA_DIR/codex-review.log}"
   mkdir -p "$(dirname "$log_file")" 2>/dev/null || true
   printf '[%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$message" >>"$log_file" 2>/dev/null || true
 }
@@ -180,10 +184,26 @@ crb_run_codex_review() {
   esac
   config_args="-c model_reasoning_effort=$reasoning -c model_verbosity=low"
 
+  # Hardened codex exec flags:
+  # --sandbox read-only: reviewer cannot write files
+  # --ephemeral: no persisted session clutter
+  # --color never: no ANSI codes in output
+  # --skip-git-repo-check: works in any directory
+  local base_args="--sandbox read-only --ephemeral --color never --skip-git-repo-check"
+
+  # Suppress Codex stderr (thinking tokens, progress) unless CRB_DEBUG=1
+  local stderr_target="/dev/null"
+  if [[ "${CRB_DEBUG:-0}" == "1" ]]; then
+    local log_file="${CRB_LOG_FILE:-$CRB_DATA_DIR/codex-review.log}"
+    stderr_target="$log_file"
+  fi
+
+  local cmd="codex exec --output-schema \"$schema_path\" $base_args $model_args $config_args -"
+
   if command -v timeout >/dev/null 2>&1; then
-    timeout "${timeout_seconds}s" codex exec --output-schema "$schema_path" $model_args $config_args -
+    eval "timeout ${timeout_seconds}s $cmd" 2>>"$stderr_target"
   else
-    codex exec --output-schema "$schema_path" $model_args $config_args -
+    eval "$cmd" 2>>"$stderr_target"
   fi
 }
 

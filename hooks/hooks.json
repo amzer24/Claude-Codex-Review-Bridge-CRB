@@ -7,7 +7,8 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/codex-review-stop.sh\"",
-            "timeout": 120
+            "timeout": 120,
+            "statusMessage": "CRB: Codex reviewing diff..."
           }
         ]
       }
@@ -19,7 +20,8 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/codex-review-file.sh\"",
-            "timeout": 60
+            "timeout": 60,
+            "statusMessage": "CRB: Codex reviewing file..."
           }
         ]
       }

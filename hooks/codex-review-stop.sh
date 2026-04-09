@@ -10,7 +10,7 @@ HOOK_INPUT="$(cat)"
 SESSION_ID="$(printf '%s' "$HOOK_INPUT" | crb_json_get "session_id")"
 CWD_VALUE="$(printf '%s' "$HOOK_INPUT" | crb_json_get "cwd")"
 WORKDIR="$(crb_normalize_path "${CWD_VALUE:-$(pwd)}")"
-STATE_DIR="${CRB_STATE_DIR:-${TMPDIR:-/tmp}}"
+STATE_DIR="${CRB_STATE_DIR:-$CRB_DATA_DIR}"
 
 crb_log "Stop hook invoked for session ${SESSION_ID:-unknown}"
 
