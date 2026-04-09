@@ -1,5 +1,6 @@
 {
   "name": "claude-codex-review-bridge",
+  "description": "Marketplace for Claude-Codex Review Bridge - automated Codex code review for Claude Code",
   "owner": {
     "name": "Lee Leckenby"
   },
