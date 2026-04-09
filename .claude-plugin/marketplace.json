@@ -10,7 +10,7 @@
     {
       "name": "claude-codex-review-bridge",
       "description": "Automated Codex code review for Claude Code. Codex reviews your code on every edit and task completion.",
-      "version": "1.1.4",
+      "version": "1.1.5",
       "source": "./"
     }
   ]

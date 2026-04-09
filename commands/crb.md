@@ -106,7 +106,8 @@ echo ""
 echo "=== Dry Run ==="
 DOCTOR_TMP="$(mktemp -d)"
 (cd "$DOCTOR_TMP" && git init -q && git config user.email "crb@test" && git config user.name "CRB" && echo "x" > f.js && git add f.js && git commit -qm init && echo "y" > f.js)
-# Find the hook script: plugin path or project path only (not cwd to avoid running unknown scripts)
+# Find the hook script: plugin/project env first, then installed plugin metadata.
+# Do not search cwd; that could run an untrusted project script.
 CRB_HOOK=""
 for candidate in "${CLAUDE_PLUGIN_ROOT:-}" "${CLAUDE_PROJECT_DIR:-}"; do
   if [[ -n "$candidate" && -f "$candidate/hooks/codex-review-stop.sh" ]]; then
@@ -115,7 +116,29 @@ for candidate in "${CLAUDE_PLUGIN_ROOT:-}" "${CLAUDE_PROJECT_DIR:-}"; do
   fi
 done
 if [[ -z "$CRB_HOOK" ]]; then
-  echo "  Hook dry run: SKIP (no hook found in CLAUDE_PLUGIN_ROOT or CLAUDE_PROJECT_DIR)"
+  CRB_HOOK="$(node <<'NODE' 2>/dev/null || true
+const fs = require("fs");
+const path = require("path");
+const metadataPath = path.join(process.env.HOME || "", ".claude", "plugins", "installed_plugins.json");
+try {
+  const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+  const entries = metadata.plugins?.["claude-codex-review-bridge@claude-codex-review-bridge"] || [];
+  for (const entry of entries) {
+    const installPath = entry?.installPath;
+    if (!installPath) continue;
+    const hookPath = path.join(installPath, "hooks", "codex-review-stop.sh");
+    if (fs.existsSync(hookPath)) {
+      process.stdout.write(hookPath);
+      process.exit(0);
+    }
+  }
+} catch (_) {}
+process.exit(1);
+NODE
+)"
+fi
+if [[ -z "$CRB_HOOK" ]]; then
+  echo "  Hook dry run: SKIP (no hook found in CLAUDE_PLUGIN_ROOT, CLAUDE_PROJECT_DIR, or installed_plugins.json)"
 else
   if echo "{\"session_id\":\"doctor\",\"cwd\":\"$DOCTOR_TMP\"}" | CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=LGTM CRB_TOGGLE_FILE=<(echo 1) bash "$CRB_HOOK" >/dev/null 2>&1; then
     echo "  Hook dry run: PASS"

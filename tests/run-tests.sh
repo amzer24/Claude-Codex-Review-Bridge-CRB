@@ -236,6 +236,52 @@ process.stdout.write(bad.join("\n"));
   assert_empty "$mojibake" "Public docs have no mojibake"
 }
 
+test_doctor_resolves_installed_plugin_hook() {
+  local plugin_root="$TMP_BASE/installed-crb"
+  local metadata_dir="$TMP_BASE/home/.claude/plugins"
+  mkdir -p "$plugin_root/hooks" "$metadata_dir"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$plugin_root/hooks/codex-review-stop.sh"
+  local plugin_root_for_node="$plugin_root"
+  local home_for_node="$TMP_BASE/home"
+  if plugin_root_win="$(cd "$plugin_root" && pwd -W 2>/dev/null)"; then
+    plugin_root_for_node="$plugin_root_win"
+  fi
+  if home_win="$(cd "$TMP_BASE/home" && pwd -W 2>/dev/null)"; then
+    home_for_node="$home_win"
+  fi
+  cat >"$metadata_dir/installed_plugins.json" <<EOF
+{"plugins":{"claude-codex-review-bridge@claude-codex-review-bridge":[{"scope":"user","installPath":"$plugin_root_for_node","version":"test"}]}}
+EOF
+  local resolved
+  resolved="$(HOME="$home_for_node" node <<'NODE'
+const fs = require("fs");
+const path = require("path");
+const metadataPath = path.join(process.env.HOME || "", ".claude", "plugins", "installed_plugins.json");
+const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+const entries = metadata.plugins?.["claude-codex-review-bridge@claude-codex-review-bridge"] || [];
+for (const entry of entries) {
+  const installPath = entry?.installPath;
+  if (!installPath) continue;
+  const hookPath = path.join(installPath, "hooks", "codex-review-stop.sh");
+  if (fs.existsSync(hookPath)) {
+    process.stdout.write(hookPath);
+    process.exit(0);
+  }
+}
+process.exit(1);
+NODE
+)"
+  local expected="$plugin_root_for_node"
+  expected="${expected%/}/hooks/codex-review-stop.sh"
+  assert_eq "$(node -e 'const path=require("path"); process.stdout.write(path.normalize(process.argv[1]));' "$expected")" "$(node -e 'const path=require("path"); process.stdout.write(path.normalize(process.argv[1] || ""));' "$resolved")" "Doctor resolves installed plugin hook from metadata"
+}
+
+test_doctor_documents_installed_plugin_fallback() {
+  local content
+  content="$(cat "$ROOT/commands/crb.md")"
+  assert_contains "$content" "installed_plugins.json" "Doctor checks installed plugin metadata when env vars are missing"
+}
+
 test_install_requires_force() {
   local settings="$TMP_BASE/settings.json"
   printf '{}\n' > "$settings"
@@ -321,6 +367,8 @@ test_marketplace_source_points_at_plugin_root
 test_plugin_manifest_does_not_duplicate_standard_hooks
 test_skill_doc_has_no_mojibake
 test_public_docs_have_no_mojibake
+test_doctor_resolves_installed_plugin_hook
+test_doctor_documents_installed_plugin_fallback
 test_install_requires_force
 test_install_force_patches_settings
 
