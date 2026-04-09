@@ -1,6 +1,6 @@
 ---
 name: crb
-description: Claude-Codex Review Bridge — toggle Codex review loop and manage review behavior
+description: Claude-Codex Review Bridge - toggle Codex review loop and manage review behavior
 ---
 
 # Claude-Codex Review Bridge (CRB)
@@ -51,7 +51,7 @@ Claude completes work
     v
 Stop hook fires --> Codex reviews git diff HEAD
     |
-    +-- LGTM --> systemMessage: "Round N/3 - LGTM. All clear." --> Claude stops
+    +-- LGTM --> exit 0, no output --> Claude stops normally
     |
     +-- MINOR --> stderr feedback + exit 2 --> Claude continues
     |   |
@@ -81,7 +81,7 @@ When you receive Codex review feedback (via stderr on Stop, or via additionalCon
 ```
 Codex Review (Round 1/3) found minor issues:
 - [issue 1]: Agree, fixing now.
-- [issue 2]: Disagree — [reason]. Keeping as-is.
+- [issue 2]: Disagree - [reason]. Keeping as-is.
 
 Addressing issue 1...
 ```
