@@ -1,23 +1,145 @@
-# Claude-Codex Review Bridge (CRB)
+<p align="center">
+  <h1 align="center">Claude-Codex Review Bridge</h1>
+  <p align="center">
+    <strong>Two AI agents. One review loop. Zero copy-paste.</strong>
+  </p>
+  <p align="center">
+    Claude Code writes your code. Codex reviews it. Claude fixes the issues. Repeat until clean.
+  </p>
+  <p align="center">
+    <a href="#install">Install</a> &middot;
+    <a href="#how-it-works">How It Works</a> &middot;
+    <a href="#configuration">Configuration</a> &middot;
+    <a href="SPEC.md">Spec</a>
+  </p>
+</p>
 
-Automated code review loop: Claude Code writes, Codex reviews, Claude fixes. Repeat until clean.
+---
 
-Works with Claude Code CLI and Desktop app (Windows & Mac).
+### The problem
+
+You have Claude Code open. You have Codex open. You're copying code between them like it's 2024. One writes, you paste into the other for review, copy the feedback back. Repeat.
+
+### The fix
+
+CRB wires them together. Claude Code's hook system triggers Codex review automatically on every file edit and task completion. Feedback routes back to Claude. The loop runs until Codex says LGTM or you intervene.
+
+No API keys. Both tools run on your existing subscriptions.
+
+---
+
+## How It Works
+
+```
+  You give Claude a task
+        |
+        v
+  Claude writes code
+        |
+        +-----> File edit? -----> Codex reviews the full file
+        |                              |
+        |                         MAJOR issue? ---> Claude gets feedback, fixes it
+        |
+        +-----> Task done? -----> Codex reviews the full git diff
+                                       |
+                                  LGTM ---------> Done. Claude stops.
+                                  MINOR --------> Feedback loops back. Claude continues.
+                                  MAJOR --------> Review surfaces to you.
+                                       |
+                                  (up to 3 rounds, then auto-exits)
+```
+
+**Stack-aware prompts** - CRB detects your project's languages, frameworks, and architecture. A Next.js app gets different review focus than a Go microservice. No configuration needed.
+
+**No style nits** - Codex only flags real problems: bugs, security issues, missing error handling, architectural concerns. Not semicolons.
+
+---
+
+## Install
+
+### Plugin (recommended)
+
+From within Claude Code:
+```
+/plugin marketplace add amzer24/Claude-Codex-Review-Bridge-CRB
+/plugin install claude-codex-review-bridge@claude-codex-review-bridge
+/crb on
+```
+
+That's it. Three commands.
+
+### Manual (per-project)
+
+```bash
+cd your-project
+bash /path/to/Claude-Codex-Review-Bridge-CRB/hooks/install.sh --force
+echo 1 > ~/.crb-enabled
+```
+
+Writes to `.claude/settings.local.json` with absolute paths. Add it to your `.gitignore`.
+
+### Local dev/testing
+
+```bash
+claude --plugin-dir /path/to/Claude-Codex-Review-Bridge-CRB
+```
+
+---
+
+## Usage
+
+CRB is **disabled by default**. You control it:
+
+| Command | What it does |
+|---------|-------------|
+| `/crb on` | Enable Codex review |
+| `/crb off` | Disable Codex review |
+| `/crb status` | Check if CRB is active |
+| `/crb log` | View recent review activity |
+| `/crb reset` | Reset the review loop counter |
+
+---
+
+## Custom Review Instructions
+
+Drop a `.crb-prompt` file in your project root:
+
+```
+All database queries must use parameterized statements.
+Flag any endpoint missing authentication middleware.
+Check for proper error boundaries in React components.
+```
+
+Set `CRB_PROMPT_FILE=.crb-prompt` in your environment. Codex will incorporate these alongside the auto-detected stack context.
+
+---
+
+## Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CRB_MAX_ROUNDS` | `3` | Review rounds before auto-exit (1-5) |
+| `CRB_PROMPT_FILE` | - | Path to custom review instructions |
+| `CRB_CODEX_TIMEOUT_SECONDS` | `120` | Codex call timeout (1-120s) |
+| `CRB_DRY_RUN` | `0` | `1` to test without calling Codex |
+| `CRB_LOG_FILE` | `$TMPDIR/codex-review.log` | Log location |
+
+---
 
 ## Prerequisites
 
-- **Claude Code** (CLI or Desktop app) with an active subscription
-- **[Codex CLI](https://developers.openai.com/codex/cli)** authenticated with your ChatGPT subscription (`codex` in PATH)
-- **Node.js** 18+
-- **Git** (with Git Bash on Windows)
+- **Claude Code** (CLI or Desktop) with an active subscription
+- **[Codex CLI](https://developers.openai.com/codex/cli)** signed in with your ChatGPT subscription
+- **Node.js** 18+ and **Git**
 
-### Windows-specific
+<details>
+<summary><strong>Windows setup</strong></summary>
 
-Claude Code uses **Git Bash internally** to run hook scripts. Verify it works:
-```bash
-bash --version
-```
-If this fails or returns Windows Subsystem bash instead of Git Bash, ensure [Git for Windows](https://git-scm.com/downloads/win) is installed and its `bin/` directory is on your PATH. You can also set the path explicitly in Claude Code settings:
+Claude Code uses Git Bash internally. Make sure [Git for Windows](https://git-scm.com/downloads/win) is installed.
+
+Verify: `bash --version`
+
+If it resolves to WSL instead of Git Bash, set the path explicitly:
 ```json
 {
   "env": {
@@ -25,118 +147,57 @@ If this fails or returns Windows Subsystem bash instead of Git Bash, ensure [Git
   }
 }
 ```
+</details>
 
-## Install
-
-### Option 1: Plugin via marketplace (recommended)
-
-From within Claude Code (CLI or Desktop):
-```
-/plugin marketplace add amzer24/Claude-Codex-Review-Bridge-CRB
-/plugin install claude-codex-review-bridge@claude-codex-review-bridge
-```
-
-The plugin registers hooks automatically. No manual settings edits needed.
-
-### Option 2: Plugin from local directory (development/testing)
-
-Clone the repo, then load it directly (CLI only):
-```bash
-claude --plugin-dir /path/to/Claude-Codex-Review-Bridge-CRB
-```
-
-### Option 3: Manual install (project-scoped)
-
-For projects where you don't want the full plugin:
-```bash
-cd your-project
-bash /path/to/Claude-Codex-Review-Bridge-CRB/hooks/install.sh --force
-```
-
-This writes hooks to `your-project/.claude/settings.local.json` using absolute paths to the CRB scripts. Add `.claude/settings.local.json` to your `.gitignore`.
-
-## Enable
-
-CRB is **disabled by default** to protect privacy.
-
-**With the plugin installed (recommended):**
-```
-/crb on       Enable Codex review
-/crb off      Disable Codex review
-/crb status   Show current status
-/crb log      Show recent review log
-/crb reset    Reset loop counter
-```
-
-**Shell fallback:**
-```bash
-echo 1 > ~/.crb-enabled    # enable
-echo 0 > ~/.crb-enabled    # disable
-```
-
-## How It Works
-
-```
-Claude edits code
-    |
-    +-- PostToolUse hook fires (Write/Edit/MultiEdit on tracked code files)
-    |   Codex reviews the full file. MAJOR issues feed back to Claude.
-    |
-    +-- Stop hook fires (Claude finishes a task)
-        Codex reviews git diff HEAD.
-        LGTM: Claude stops.
-        MINOR: feedback loops back, Claude continues (up to 3 rounds).
-        MAJOR: review shown to user, Claude stops.
-```
-
-The review prompt automatically detects your project's languages, frameworks, and architecture to give stack-specific feedback.
-
-## Custom Review Instructions
-
-Create a file with project-specific review instructions:
-```
-Focus on SQL injection in all database queries.
-Ensure all API endpoints validate authentication.
-```
-
-Then set `CRB_PROMPT_FILE=.crb-prompt` in your environment.
-
-## Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CRB_TOGGLE_FILE` | `~/.crb-enabled` | Path to enable/disable toggle file |
-| `CRB_MAX_ROUNDS` | `3` | Max review rounds per session (clamped 1-5) |
-| `CRB_DRY_RUN` | `0` | Set to `1` to skip real Codex calls |
-| `CRB_DRY_RUN_SEVERITY` | `LGTM` | Severity for dry run (`LGTM`, `MINOR`, `MAJOR`) |
-| `CRB_CODEX_TIMEOUT_SECONDS` | `120` | Codex call timeout (clamped 1-120) |
-| `CRB_PROMPT_FILE` | unset | Path to custom review instructions file |
-| `CRB_LOG_FILE` | `$TMPDIR/codex-review.log` | Log file path |
-
-## View Logs
-
-```
-/crb log
-```
-Or: `tail -20 "${TMPDIR:-/tmp}/codex-review.log"`
-
-## Reset Loop Counter
-
-```
-/crb reset
-```
-Or: `rm -f "${TMPDIR:-/tmp}"/codex-review-*-count`
+---
 
 ## Compatibility
 
 | Platform | Status |
 |----------|--------|
-| Claude Code CLI (Windows) | Tested - requires Git Bash |
-| Claude Code CLI (macOS/Linux) | Supported |
-| Claude Code Desktop (Windows) | Supported - uses Git Bash internally |
-| Claude Code Desktop (macOS) | Supported |
-| Claude Code Web | Not supported - requires local `codex` binary |
+| Claude Code CLI | Windows (tested), macOS, Linux |
+| Claude Code Desktop | Windows, macOS |
+| Claude Code Web | Not supported (needs local `codex` binary) |
 
-## License
+---
 
-MIT
+## How It Was Built
+
+This plugin was built entirely using its own review loop. Claude Code wrote the implementation. Codex reviewed every file edit and caught real bugs during development:
+
+- SQL injection in test fixtures
+- Incomplete closure APIs (private Map inaccessible to cleanup functions)
+- Missing `try/catch` on JSON parsing in the hook runtime
+- Prompt injection via triple backticks in reviewed code
+- Symlink traversal that could leak local files to the reviewer
+- Git `--no-ext-diff` needed to prevent external diff driver execution
+
+Every fix was triggered by Codex feedback flowing back through the hook system. The tool reviewed itself into existence.
+
+---
+
+## Architecture
+
+```
+hooks/
+  codex-review-stop.sh       Stop hook - reviews git diff HEAD on task completion
+  codex-review-file.sh       PostToolUse hook - reviews individual files on Write/Edit/MultiEdit
+  hooks.json                 Plugin hook registration
+  install.sh                 Manual installer (project-scoped)
+  review-schema.json         Codex structured output schema (LGTM/MINOR/MAJOR)
+  lib/
+    common.sh                Toggle, JSON parsing, dynamic prompts, project detection
+commands/
+  crb.md                     /crb slash command
+skills/
+  crb/
+    SKILL.md                 Review loop behavior instructions for Claude
+tests/
+  run-tests.sh               46-assertion test suite
+```
+
+---
+
+<p align="center">
+  MIT License
+</p>
