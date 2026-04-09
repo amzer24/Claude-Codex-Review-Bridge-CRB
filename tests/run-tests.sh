@@ -213,10 +213,10 @@ test_marketplace_source_points_at_plugin_root() {
   assert_eq "./" "$source" "Marketplace source points at plugin root"
 }
 
-test_plugin_manifest_registers_hooks() {
-  local hooks_path
-  hooks_path="$(node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync(".claude-plugin/plugin.json","utf8")); process.stdout.write(String(p.hooks || ""));' 2>/dev/null || true)"
-  assert_eq "./hooks/hooks.json" "$hooks_path" "Plugin manifest registers hooks"
+test_plugin_manifest_does_not_duplicate_standard_hooks() {
+  local has_hooks
+  has_hooks="$(node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync(".claude-plugin/plugin.json","utf8")); process.stdout.write(String(Object.prototype.hasOwnProperty.call(p, "hooks")));' 2>/dev/null || true)"
+  assert_eq "false" "$has_hooks" "Plugin manifest does not duplicate auto-loaded hooks/hooks.json"
 }
 
 test_skill_doc_has_no_mojibake() {
@@ -307,7 +307,7 @@ test_file_major_additional_context
 test_file_minor_is_ignored
 test_schema_path_exists
 test_marketplace_source_points_at_plugin_root
-test_plugin_manifest_registers_hooks
+test_plugin_manifest_does_not_duplicate_standard_hooks
 test_skill_doc_has_no_mojibake
 test_install_requires_force
 test_install_force_patches_settings
