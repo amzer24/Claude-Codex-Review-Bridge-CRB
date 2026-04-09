@@ -202,6 +202,7 @@ crb_run_codex_review() {
   local stderr_target="/dev/null"
   if [[ "${CRB_DEBUG:-0}" == "1" ]]; then
     stderr_target="${CRB_LOG_FILE:-$CRB_DATA_DIR/codex-review.log}"
+    mkdir -p "$(dirname "$stderr_target")" 2>/dev/null || stderr_target="/dev/null"
   fi
 
   if command -v timeout >/dev/null 2>&1; then
