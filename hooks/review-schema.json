@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "severity": {
+      "type": "string",
+      "enum": ["LGTM", "MINOR", "MAJOR"]
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "suggestions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": ["severity", "issues", "suggestions"],
+  "additionalProperties": false
+}
