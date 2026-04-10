@@ -313,10 +313,43 @@ process.stdout.write(parts.join(". ") || "general-purpose codebase");
 '
 }
 
+crb_get_last_assistant_message() {
+  local transcript_path="$1"
+  if [[ -z "$transcript_path" || ! -f "$transcript_path" ]]; then
+    printf ''
+    return 0
+  fi
+  node -e '
+const fs = require("fs");
+const path = process.argv[1];
+try {
+  const lines = fs.readFileSync(path, "utf8").trim().split("\n").filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    let entry;
+    try { entry = JSON.parse(lines[i]); } catch { continue; }
+    // Handle both flat { role, content } and wrapped { message: { role, content } }
+    const msg = (entry && typeof entry.role === "string") ? entry : entry?.message;
+    if (!msg || msg.role !== "assistant") continue;
+    const content = Array.isArray(msg.content) ? msg.content : [];
+    const text = content
+      .filter(c => c && c.type === "text")
+      .map(c => String(c.text ?? ""))
+      .join("\n")
+      .trim();
+    if (text) {
+      process.stdout.write(text);
+      break;
+    }
+  }
+} catch {}
+' "$transcript_path"
+}
+
 crb_build_review_prompt() {
-  local review_type="$1"  # "diff" or "file"
+  local review_type="$1"  # "diff", "file", or "response"
   local content="$2"
   local file_path="${3:-}"
+  local response_text="${4:-}"  # optional: last assistant message for stop-hook reviews
   local project_ctx
   project_ctx="$(crb_detect_project_context 2>/dev/null || printf 'general-purpose codebase')"
   local safe_content
@@ -327,8 +360,46 @@ crb_build_review_prompt() {
     custom="$(cat "$CRB_PROMPT_FILE" 2>/dev/null || true)"
   fi
 
+  local safe_response=""
+  if [[ -n "$response_text" ]]; then
+    safe_response="$(printf '%s' "$response_text" | crb_escape_fences)"
+  fi
+
   if [[ "$review_type" == "diff" ]]; then
-    cat <<EOF
+    # When response text is provided, include it before the diff for fuller context
+    if [[ -n "$safe_response" && -n "$safe_content" ]]; then
+      cat <<EOF
+Expert code reviewer. Stack: $project_ctx${custom:+
+$custom}
+Review for bugs, security issues, missing error handling, architecture problems. No style nits. JSON output only.
+
+## Agent Response / Plan
+
+\`\`\`
+$safe_response
+\`\`\`
+
+## Code Changes (git diff)
+
+\`\`\`diff
+$safe_content
+\`\`\`
+EOF
+    elif [[ -n "$safe_response" ]]; then
+      # Response only — no diff (e.g. agent presented a plan with no file changes)
+      cat <<EOF
+Expert code reviewer. Stack: $project_ctx${custom:+
+$custom}
+Review this agent response/plan for correctness, security issues, logical errors, missing edge cases, and architectural problems. No style nits. JSON output only.
+
+## Agent Response / Plan
+
+\`\`\`
+$safe_response
+\`\`\`
+EOF
+    else
+      cat <<EOF
 Expert code reviewer. Stack: $project_ctx${custom:+
 $custom}
 Review this diff for bugs, security issues, missing error handling, architecture problems. No style nits. JSON output only.
@@ -337,6 +408,7 @@ Review this diff for bugs, security issues, missing error handling, architecture
 $safe_content
 \`\`\`
 EOF
+    fi
   else
     cat <<EOF
 Expert code reviewer. Stack: $project_ctx${custom:+

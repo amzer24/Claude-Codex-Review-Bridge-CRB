@@ -9,6 +9,7 @@ SCHEMA_PATH="$SCRIPT_DIR/review-schema.json"
 HOOK_INPUT="$(cat)"
 SESSION_ID="$(printf '%s' "$HOOK_INPUT" | crb_json_get "session_id")"
 CWD_VALUE="$(printf '%s' "$HOOK_INPUT" | crb_json_get "cwd")"
+TRANSCRIPT_PATH="$(printf '%s' "$HOOK_INPUT" | crb_json_get "transcript_path")"
 WORKDIR="$(crb_normalize_path "${CWD_VALUE:-$(pwd)}")"
 STATE_DIR="${CRB_STATE_DIR:-$CRB_DATA_DIR}"
 
@@ -24,14 +25,19 @@ if ! cd "$WORKDIR" 2>/dev/null; then
   exit 0
 fi
 
-if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  crb_log "Stop hook skipped: $WORKDIR is not a git work tree"
-  exit 0
+# Get git diff if in a git repo (not required — response review works without one)
+DIFF_OUTPUT=""
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  DIFF_OUTPUT="$(git --no-pager diff --no-ext-diff HEAD -- 2>/dev/null || true)"
+else
+  crb_log "Stop hook: not a git repo, will review response text only"
 fi
 
-DIFF_OUTPUT="$(git --no-pager diff --no-ext-diff HEAD -- 2>/dev/null || true)"
-if [[ -z "$DIFF_OUTPUT" ]]; then
-  crb_log "Stop hook skipped: no diff"
+# Get the last assistant message from the transcript for plan/response review
+RESPONSE_TEXT="$(crb_get_last_assistant_message "$TRANSCRIPT_PATH")"
+
+if [[ -z "$DIFF_OUTPUT" && -z "$RESPONSE_TEXT" ]]; then
+  crb_log "Stop hook skipped: no diff and no response text"
   exit 0
 fi
 
@@ -61,7 +67,7 @@ ROUND="$((COUNT + 1))"
 printf '%s\n' "$ROUND" >"$COUNT_FILE" 2>/dev/null || true
 crb_log "Stop hook: starting review round $ROUND/$MAX_ROUNDS"
 
-PROMPT="$(crb_build_review_prompt "diff" "$DIFF_OUTPUT")"
+PROMPT="$(crb_build_review_prompt "diff" "$DIFF_OUTPUT" "" "$RESPONSE_TEXT")"
 
 if ! REVIEW_OUTPUT="$(printf '%s' "$PROMPT" | crb_run_codex_review "$SCHEMA_PATH")"; then
   crb_log "Stop hook skipped: codex exec failed"
