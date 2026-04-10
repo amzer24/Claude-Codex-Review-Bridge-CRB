@@ -4,7 +4,7 @@
     <strong>Two AI agents. One review loop. Zero copy-paste.</strong>
   </p>
   <p align="center">
-    Claude Code writes your code. Codex reviews it. Claude fixes the issues. Repeat until clean.
+    Claude Code writes your code — and plans it. Codex reviews both. Claude fixes the issues. Repeat until clean.
   </p>
   <p align="center">
     <a href="#install">Install</a> &middot;
@@ -22,7 +22,7 @@ You have Claude Code open. You have Codex open. You're copying code between them
 
 ### The fix
 
-CRB wires them together. Claude Code's hook system triggers Codex review automatically on every file edit and task completion. Feedback routes back to Claude. The loop runs until Codex says LGTM or you intervene.
+CRB wires them together. Claude Code's hook system triggers Codex review automatically on every file edit and task completion — and now on every response too. Codex reviews the plan before a line of code is written, then reviews the diff after. Feedback routes back to Claude. The loop runs until Codex says LGTM or you intervene.
 
 No API keys. Both tools run on your existing subscriptions.
 
@@ -34,20 +34,22 @@ No API keys. Both tools run on your existing subscriptions.
   You give Claude a task
         |
         v
-  Claude writes code
+  Claude responds (plan, code, or both)
         |
-        +-----> File edit? -----> Codex reviews the full file
-        |                              |
-        |                         MAJOR issue? ---> Claude gets feedback, fixes it
+        +-----> File edit? -------> Codex reviews the full file
+        |                                |
+        |                           MAJOR issue? --> Claude gets feedback, fixes it
         |
-        +-----> Task done? -----> Codex reviews the full git diff
-                                       |
-                                  LGTM ---------> Done. Claude stops.
-                                  MINOR --------> Feedback loops back. Claude continues.
-                                  MAJOR --------> Review surfaces to you.
-                                       |
-                                  (up to 3 rounds, then auto-exits)
+        +-----> Task done? -------> Codex reviews the last response + git diff
+                                         |
+                                    LGTM ---------> Done. Claude stops.
+                                    MINOR --------> Feedback loops back. Claude continues.
+                                    MAJOR --------> Review surfaces to you.
+                                         |
+                                    (up to 3 rounds, then auto-exits)
 ```
+
+**Reviews plans, not just code** — CRB reads Claude's response from the session transcript on every task completion. If Claude proposes a bad approach, Codex catches it before any files are written.
 
 **Stack-aware prompts** - CRB detects your project's languages, frameworks, and architecture. A Next.js app gets different review focus than a Go microservice. No configuration needed.
 
