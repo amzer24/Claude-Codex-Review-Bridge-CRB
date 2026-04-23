@@ -26,7 +26,7 @@ Respond: **CRB disabled.** Reviews paused.
 Read actual persisted state and display as a dashboard:
 ```bash
 TOGGLE="$(cat ~/.crb-enabled 2>/dev/null || echo 'not set')"
-MODEL="$(cat ~/.crb-model 2>/dev/null || echo 'gpt-5.5')"
+MODEL="$(cat ~/.crb-model 2>/dev/null || echo 'codex default')"
 REASONING="$(cat ~/.crb-reasoning 2>/dev/null || echo 'medium')"
 STRICT="${CRB_STRICT_POSTTOOL:-0}"
 CRB_DIR="${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}}"
@@ -50,8 +50,18 @@ Do NOT hardcode any values. Show what the files actually contain.
 
 ### `log`
 ```bash
-CRB_DIR="${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}}"
-tail -30 "$CRB_DIR/codex-review.log" 2>/dev/null || tail -30 "${TMPDIR:-/tmp}/codex-review.log" 2>/dev/null || echo "No log file found."
+# Hooks may be invoked without CLAUDE_PLUGIN_DATA set, so logs can live in
+# either location. Merge both, sort by timestamp, show the last 30 lines.
+PLUGIN_LOG="${CLAUDE_PLUGIN_DATA:-}/codex-review.log"
+TMP_LOG="${TMPDIR:-/tmp}/codex-review.log"
+LOGS=()
+[[ -n "${CLAUDE_PLUGIN_DATA:-}" && -f "$PLUGIN_LOG" ]] && LOGS+=("$PLUGIN_LOG")
+[[ -f "$TMP_LOG" ]] && LOGS+=("$TMP_LOG")
+if (( ${#LOGS[@]} == 0 )); then
+  echo "No log file found."
+else
+  cat "${LOGS[@]}" | sort -s -k1,1 | tail -30
+fi
 ```
 Show the output to the user.
 
@@ -78,10 +88,9 @@ Respond: **Deep mode** - gpt-5.3-codex, high reasoning. Thorough reviews (~16s).
 
 ### `default`
 ```bash
-echo "gpt-5.5" > ~/.crb-model
-echo "medium" > ~/.crb-reasoning
+rm -f ~/.crb-model ~/.crb-reasoning
 ```
-Respond: **Default mode** - gpt-5.5, medium reasoning.
+Respond: **Default mode** - uses Codex CLI's own default model (gpt-5.5 with ChatGPT sign-in, falls back automatically). Set `CRB_MODEL` or run `/crb fast`/`deep` to override.
 
 ### `doctor`
 Run all checks and report as a checklist:
@@ -99,7 +108,7 @@ codex --version 2>/dev/null && echo "  codex: OK" || echo "  codex: FAIL"
 echo ""
 echo "=== Config ==="
 echo "  Toggle: $(cat ~/.crb-enabled 2>/dev/null || echo 'not set (disabled)')"
-echo "  Model: $(cat ~/.crb-model 2>/dev/null || echo 'default (gpt-5.5)')"
+echo "  Model: $(cat ~/.crb-model 2>/dev/null || echo 'default (codex CLI default)')"
 echo "  Reasoning: $(cat ~/.crb-reasoning 2>/dev/null || echo 'default (medium)')"
 
 # Dry run
@@ -161,6 +170,6 @@ Format as a clean checklist. Flag any FAILs with suggested fixes.
 /crb reset    Reset loop counter
 /crb fast     Fast mode  (gpt-5.4-mini, ~8s)
 /crb deep     Deep mode  (gpt-5.3-codex, ~16s)
-/crb default  Default    (gpt-5.5, ~17s)
+/crb default  Default    (codex's own default model)
 /crb doctor   Verify setup
 ```

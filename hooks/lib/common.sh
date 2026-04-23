@@ -22,7 +22,14 @@ crb_is_enabled() {
 crb_log() {
   local message="$1"
   local log_file="${CRB_LOG_FILE:-$CRB_DATA_DIR/codex-review.log}"
-  mkdir -p "$(dirname "$log_file")" 2>/dev/null || true
+  local log_dir
+  log_dir="$(dirname "$log_file")"
+  # Private dir (0700) + private log (0600) — logs can contain stderr with
+  # sensitive data (tokens, paths). Enforce even if umask is permissive.
+  (umask 077 && mkdir -p "$log_dir" 2>/dev/null) || true
+  if [[ ! -e "$log_file" ]]; then
+    (umask 077 && : >"$log_file") 2>/dev/null || true
+  fi
   printf '[%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$message" >>"$log_file" 2>/dev/null || true
 }
 
@@ -183,7 +190,9 @@ crb_run_codex_review() {
     *) reasoning="medium" ;;
   esac
 
-  # Build command as array to avoid eval/shell injection
+  # Build command as array to avoid eval/shell injection.
+  # mcp_servers={} disables MCP startup for reviews — reviews don't need MCP
+  # and a broken MCP config (e.g. expired OAuth) would fail every review.
   local -a cmd=(codex exec
     --output-schema "$schema_path"
     --sandbox read-only
@@ -192,30 +201,76 @@ crb_run_codex_review() {
     --skip-git-repo-check
     -c "model_reasoning_effort=$reasoning"
     -c "model_verbosity=low"
+    -c "mcp_servers={}"
   )
   if [[ -n "$model" ]]; then
     cmd+=(-m "$model")
   fi
   cmd+=(-)
 
-  # Suppress Codex stderr (thinking tokens, progress) unless CRB_DEBUG=1
-  local stderr_target="/dev/null"
-  if [[ "${CRB_DEBUG:-0}" == "1" ]]; then
-    stderr_target="${CRB_LOG_FILE:-$CRB_DATA_DIR/codex-review.log}"
-    mkdir -p "$(dirname "$stderr_target")" 2>/dev/null || stderr_target="/dev/null"
+  # Capture stderr to a secure temp file so we can surface it to the log on failure.
+  local stderr_file
+  stderr_file="$(umask 077 && mktemp -t crb-codex-stderr.XXXXXX 2>/dev/null)" || stderr_file=""
+  if [[ -z "$stderr_file" ]]; then
+    crb_log "codex exec skipped: secure temp file creation failed"
+    return 1
   fi
 
+  # Timeout enforcement — mandatory. Use `timeout` (GNU coreutils / Linux),
+  # then `gtimeout` (macOS via brew coreutils), then a bash watchdog fallback.
+  local exit_code=0
   if command -v timeout >/dev/null 2>&1; then
-    timeout "${timeout_seconds}s" "${cmd[@]}" 2>>"$stderr_target"
+    timeout "${timeout_seconds}s" "${cmd[@]}" 2>"$stderr_file" || exit_code=$?
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "${timeout_seconds}s" "${cmd[@]}" 2>"$stderr_file" || exit_code=$?
   else
-    "${cmd[@]}" 2>>"$stderr_target"
+    # Background watchdog fallback. Run Codex in its own process group so we
+    # can TERM/KILL the whole group (parent + any children it spawned) on
+    # timeout — killing only the parent PID orphans child processes.
+    local group_launcher
+    if command -v setsid >/dev/null 2>&1; then
+      group_launcher="setsid"
+    else
+      group_launcher=""
+    fi
+    if [[ -n "$group_launcher" ]]; then
+      "$group_launcher" "${cmd[@]}" 2>"$stderr_file" &
+    else
+      "${cmd[@]}" 2>"$stderr_file" &
+    fi
+    local codex_pid=$!
+    (
+      sleep "$timeout_seconds"
+      if kill -0 "$codex_pid" 2>/dev/null; then
+        # Negative PID = target the whole process group
+        kill -TERM -"$codex_pid" 2>/dev/null || kill -TERM "$codex_pid" 2>/dev/null
+        sleep 1
+        kill -KILL -"$codex_pid" 2>/dev/null || kill -KILL "$codex_pid" 2>/dev/null
+      fi
+    ) &
+    local watchdog_pid=$!
+    wait "$codex_pid" 2>/dev/null || exit_code=$?
+    kill "$watchdog_pid" 2>/dev/null || true
+    wait "$watchdog_pid" 2>/dev/null || true
   fi
+
+  if (( exit_code != 0 )); then
+    # Truncated stderr tail so users can diagnose (404, auth, MCP errors)
+    local tail_stderr
+    tail_stderr="$(tail -c 1000 "$stderr_file" 2>/dev/null | tr -d '\0' | tr '\n' ' ')"
+    crb_log "codex exec failed (exit $exit_code): ${tail_stderr:-no stderr}"
+  elif [[ "${CRB_DEBUG:-0}" == "1" ]]; then
+    local debug_target="${CRB_LOG_FILE:-$CRB_DATA_DIR/codex-review.log}"
+    mkdir -p "$(dirname "$debug_target")" 2>/dev/null && cat "$stderr_file" >>"$debug_target" 2>/dev/null || true
+  fi
+  rm -f "$stderr_file" 2>/dev/null || true
+  return "$exit_code"
 }
 
 crb_is_code_file() {
   local file_path="$1"
   case "${file_path##*.}" in
-    c|cc|cpp|cs|css|go|h|hpp|html|java|js|jsx|kt|mjs|php|py|rb|rs|sh|sql|svelte|swift|ts|tsx|vue)
+    bash|bats|c|cc|cpp|cs|css|go|h|hpp|html|java|js|jsx|kt|mjs|php|py|rb|rs|sh|sql|svelte|swift|ts|tsx|vue|zsh)
       return 0
       ;;
     *)

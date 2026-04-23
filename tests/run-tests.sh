@@ -171,16 +171,35 @@ test_stop_includes_staged_changes() {
   assert_contains "$HOOK_STDERR" "[CRB]" "Stop staged change gets reviewed with CRB header"
 }
 
-test_file_untracked_is_skipped() {
+test_file_untracked_is_reviewed() {
+  # Untracked (new) files should be reviewed — that's when review catches
+  # the most issues. Boundary enforcement still protects against paths
+  # outside the work tree (covered by test_file_outside_repo_is_rejected).
   local repo input
   repo="$(make_repo file-untracked)" || { fail "repo setup failed"; return; }
   input="$(make_file_input file-untracked "$repo" "$repo/new.js")" || { fail "input generation failed"; return; }
   printf 'console.log("new");\n' > "$repo/new.js"
   CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MAJOR run_hook "$FILE_HOOK" "$input"
 
-  assert_eq "0" "$HOOK_STATUS" "File hook skips untracked files with exit 0"
-  assert_empty "$HOOK_STDOUT" "File untracked skip stdout is empty"
-  assert_empty "$HOOK_STDERR" "File untracked skip stderr is empty"
+  assert_eq "0" "$HOOK_STATUS" "File hook reviews untracked files with exit 0"
+  assert_contains "$HOOK_STDOUT" "additionalContext" "File untracked review emits additionalContext"
+  assert_empty "$HOOK_STDERR" "File untracked review stderr is empty"
+}
+
+test_file_outside_repo_is_rejected() {
+  # Path confinement: absolute paths outside the repo must be rejected
+  # to prevent exfiltration of arbitrary local files to the reviewer.
+  local repo input outside
+  repo="$(make_repo file-outside)" || { fail "repo setup failed"; return; }
+  outside="$(mktemp "${TMPDIR:-/tmp}/crb-outside.XXXXXX.js")" || { fail "tmp setup failed"; return; }
+  printf 'console.log("outside");\n' > "$outside"
+  input="$(make_file_input file-outside "$repo" "$outside")" || { fail "input generation failed"; return; }
+  CRB_DRY_RUN=1 CRB_DRY_RUN_SEVERITY=MAJOR run_hook "$FILE_HOOK" "$input"
+
+  assert_eq "0" "$HOOK_STATUS" "File hook exits 0 when target is outside the repo"
+  assert_empty "$HOOK_STDOUT" "File outside-repo stdout is empty"
+  assert_empty "$HOOK_STDERR" "File outside-repo stderr is empty"
+  rm -f "$outside"
 }
 
 test_file_non_code_is_skipped() {
@@ -248,13 +267,26 @@ test_skill_doc_has_no_mojibake() {
 }
 
 test_public_docs_have_no_mojibake() {
+  # Pre-check that every expected file exists before scanning, so a missing
+  # doc can't be misreported as clean. Fail explicitly on node errors.
+  local files=("README.md" "commands/crb.md" "skills/crb/SKILL.md" ".claude-plugin/plugin.json" ".claude-plugin/marketplace.json")
+  local f
+  for f in "${files[@]}"; do
+    if [[ ! -f "$ROOT/$f" ]]; then
+      fail "Public docs have no mojibake (missing expected file: $f)"
+      return
+    fi
+  done
   local mojibake
-  mojibake="$(cd "$ROOT" && node -e '
+  if ! mojibake="$(cd "$ROOT" && node -e '
 const fs = require("fs");
-const files = ["README.md", "SPEC.md", "commands/crb.md", "skills/crb/SKILL.md", ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"];
+const files = process.argv.slice(1);
 const bad = files.filter((file) => fs.readFileSync(file, "utf8").includes("\u00e2"));
 process.stdout.write(bad.join("\n"));
-' 2>/dev/null || true)"
+' "${files[@]}")"; then
+    fail "Public docs have no mojibake (node scanner failed)"
+    return
+  fi
   assert_empty "$mojibake" "Public docs have no mojibake"
 }
 
@@ -407,7 +439,8 @@ test_stop_minor_exits_2_with_stderr
 test_stop_major_system_message
 test_stop_loop_cap_exits_silent
 test_stop_includes_staged_changes
-test_file_untracked_is_skipped
+test_file_untracked_is_reviewed
+test_file_outside_repo_is_rejected
 test_file_non_code_is_skipped
 test_file_major_additional_context
 test_file_minor_is_ignored
