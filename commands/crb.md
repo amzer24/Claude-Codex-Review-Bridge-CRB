@@ -26,7 +26,7 @@ Respond: **CRB disabled.** Reviews paused.
 Read actual persisted state and display as a dashboard:
 ```bash
 TOGGLE="$(cat ~/.crb-enabled 2>/dev/null || echo 'not set')"
-MODEL="$(cat ~/.crb-model 2>/dev/null || echo 'gpt-5.4')"
+MODEL="$(cat ~/.crb-model 2>/dev/null || echo 'gpt-5.5')"
 REASONING="$(cat ~/.crb-reasoning 2>/dev/null || echo 'medium')"
 STRICT="${CRB_STRICT_POSTTOOL:-0}"
 CRB_DIR="${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}}"
@@ -78,9 +78,10 @@ Respond: **Deep mode** - gpt-5.3-codex, high reasoning. Thorough reviews (~16s).
 
 ### `default`
 ```bash
-rm -f ~/.crb-model ~/.crb-reasoning
+echo "gpt-5.5" > ~/.crb-model
+echo "medium" > ~/.crb-reasoning
 ```
-Respond: **Default mode** - gpt-5.4, medium reasoning.
+Respond: **Default mode** - gpt-5.5, medium reasoning.
 
 ### `doctor`
 Run all checks and report as a checklist:
@@ -98,7 +99,7 @@ codex --version 2>/dev/null && echo "  codex: OK" || echo "  codex: FAIL"
 echo ""
 echo "=== Config ==="
 echo "  Toggle: $(cat ~/.crb-enabled 2>/dev/null || echo 'not set (disabled)')"
-echo "  Model: $(cat ~/.crb-model 2>/dev/null || echo 'default (gpt-5.4)')"
+echo "  Model: $(cat ~/.crb-model 2>/dev/null || echo 'default (gpt-5.5)')"
 echo "  Reasoning: $(cat ~/.crb-reasoning 2>/dev/null || echo 'default (medium)')"
 
 # Dry run
@@ -160,6 +161,6 @@ Format as a clean checklist. Flag any FAILs with suggested fixes.
 /crb reset    Reset loop counter
 /crb fast     Fast mode  (gpt-5.4-mini, ~8s)
 /crb deep     Deep mode  (gpt-5.3-codex, ~16s)
-/crb default  Default    (gpt-5.4, ~17s)
+/crb default  Default    (gpt-5.5, ~17s)
 /crb doctor   Verify setup
 ```

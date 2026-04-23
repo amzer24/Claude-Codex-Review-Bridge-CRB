@@ -18,7 +18,7 @@ CRB makes Codex your automatic code reviewer. Every file you edit and every task
 | `/crb reset` | Reset review loop counter |
 | `/crb fast` | Fast mode - gpt-5.4-mini, low reasoning (~8s) |
 | `/crb deep` | Deep mode - gpt-5.3-codex, high reasoning (~16s) |
-| `/crb default` | Default mode - gpt-5.4, medium reasoning (~17s) |
+| `/crb default` | Default mode - gpt-5.5, medium reasoning (~17s) |
 | `/crb doctor` | Verify all prerequisites are working |
 
 ## What Happens When CRB Is Enabled
