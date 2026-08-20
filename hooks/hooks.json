@@ -6,22 +6,23 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/codex-review-stop.sh\"",
-            "timeout": 120,
+            "command": "bash",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/codex-review-stop.sh"],
+            "timeout": 150,
             "statusMessage": "CRB: Codex reviewing diff..."
           }
         ]
       }
     ],
-    "PostToolUse": [
+    "PostToolBatch": [
       {
-        "matcher": "Write|Edit|MultiEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/codex-review-file.sh\"",
-            "timeout": 60,
-            "statusMessage": "CRB: Codex reviewing file..."
+            "command": "bash",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/codex-review-batch.sh"],
+            "timeout": 150,
+            "statusMessage": "CRB: Codex reviewing change batch..."
           }
         ]
       }
